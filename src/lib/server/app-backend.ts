@@ -18,6 +18,199 @@ import { createId, isoToday } from "@/lib/utils";
 
 const DEFAULT_LOCATION = "Jakarta";
 
+type AccountRow = {
+  id: string;
+  name: string;
+  type: AppSnapshot["accounts"][number]["type"];
+  balance: number;
+};
+
+type CategoryRow = {
+  id: string;
+  name: string;
+  kind: AppSnapshot["categories"][number]["kind"];
+};
+
+type BudgetCycleRow = {
+  id: string;
+  label: string;
+  start_on: string;
+  end_on: string;
+  target_amount: number;
+  spent_amount: number;
+  income_amount: number;
+  status: AppSnapshot["budgetCycles"][number]["status"];
+};
+
+type BudgetCategoryAllocationRow = {
+  id: string;
+  cycle_id: string;
+  category_id: string;
+  allocated_amount: number;
+};
+
+type TransactionRow = {
+  id: string;
+  title: string;
+  kind: AppSnapshot["transactions"][number]["kind"];
+  amount: number;
+  occurred_on: string;
+  account_id: string;
+  category_id: string | null;
+  cycle_id: string | null;
+  merchant: string | null;
+  tags: string[] | null;
+  note: string | null;
+  transfer_target_account_id: string | null;
+  source_type: AppSnapshot["transactions"][number]["sourceType"] | null;
+  source_id: string | null;
+};
+
+type RecurringPlanRow = {
+  id: string;
+  label: string;
+  kind: AppSnapshot["recurringPlans"][number]["kind"];
+  amount: number;
+  cadence: AppSnapshot["recurringPlans"][number]["cadence"];
+  next_occurrence_on: string;
+  account_id: string;
+  category_id: string | null;
+  merchant: string | null;
+  tags: string[] | null;
+  note: string | null;
+  enabled: boolean;
+};
+
+type DebtRow = {
+  id: string;
+  name: string;
+  lender: string;
+  principal_amount: number;
+  remaining_amount: number;
+  installment_amount: number;
+  total_months: number;
+  remaining_months: number;
+  note: string | null;
+  status: AppSnapshot["debts"][number]["status"];
+};
+
+type DebtInstallmentRow = {
+  id: string;
+  debt_id: string;
+  installment_number: number;
+  due_on: string;
+  amount: number;
+  late_fee_amount: number;
+  status: AppSnapshot["debtInstallments"][number]["status"];
+  status_source: AppSnapshot["debtInstallments"][number]["statusSource"];
+  paid_on: string | null;
+  note: string | null;
+};
+
+type DebtPaymentRow = {
+  id: string;
+  debt_id: string;
+  installment_id: string;
+  amount: number;
+  paid_on: string;
+  remaining_amount: number;
+  note: string | null;
+};
+
+type ProjectRow = {
+  id: string;
+  name: string;
+  description: string;
+  status: AppSnapshot["projects"][number]["status"];
+  focus: string;
+};
+
+type TaskRow = {
+  id: string;
+  title: string;
+  status: AppSnapshot["tasks"][number]["status"];
+  priority: AppSnapshot["tasks"][number]["priority"];
+  due_on: string | null;
+  project_id: string | null;
+  today_pinned: boolean;
+  note: string | null;
+  start_time: string | null;
+  due_time: string | null;
+  reminder_at: string | null;
+  completed_at: string | null;
+  recurring_cadence: "daily" | "weekly" | "monthly" | null;
+  recurring_interval: number | null;
+};
+
+type SubtaskRow = {
+  id: string;
+  task_id: string;
+  title: string;
+  done: boolean;
+  note: string | null;
+};
+
+type NoteRow = {
+  id: string;
+  title: string;
+  content: string;
+};
+
+type NoteLinkRow = {
+  note_id: string;
+  link_type: NoteLink["type"];
+  link_id: string;
+};
+
+type WishItemRow = {
+  id: string;
+  name: string;
+  target_price: number;
+  priority: AppSnapshot["wishItems"][number]["priority"];
+  status: AppSnapshot["wishItems"][number]["status"];
+  note: string | null;
+};
+
+type ShoppingItemRow = {
+  id: string;
+  name: string;
+  estimated_price: number;
+  quantity: number | null;
+  section: string | null;
+  status: AppSnapshot["shoppingItems"][number]["status"];
+  store: string | null;
+  source_wish_id: string | null;
+  note: string | null;
+};
+
+type ReminderRuleRow = {
+  id: string;
+  channel: AppSnapshot["reminderRules"][number]["channel"];
+  cadence: AppSnapshot["reminderRules"][number]["cadence"];
+  enabled: boolean;
+  label: string;
+};
+
+type AppTableRows = {
+  accounts: AccountRow;
+  categories: CategoryRow;
+  budget_cycles: BudgetCycleRow;
+  budget_category_allocations: BudgetCategoryAllocationRow;
+  transactions: TransactionRow;
+  recurring_plans: RecurringPlanRow;
+  debts: DebtRow;
+  debt_installments: DebtInstallmentRow;
+  debt_payments: DebtPaymentRow;
+  projects: ProjectRow;
+  tasks: TaskRow;
+  subtasks: SubtaskRow;
+  notes: NoteRow;
+  note_links: NoteLinkRow;
+  wish_items: WishItemRow;
+  shopping_items: ShoppingItemRow;
+  reminder_rules: ReminderRuleRow;
+};
+
 function raiseIfError(error: { message: string } | null) {
   if (error) {
     throw new Error(error.message);
@@ -45,9 +238,9 @@ function normalizeNoteLinks(links: NoteLink[]) {
   );
 }
 
-async function listRows<T>(
+async function listRows<TTable extends keyof AppTableRows>(
   supabase: SupabaseClient,
-  table: string,
+  table: TTable,
   userId: string,
   orderBy?: string,
   ascending = true,
@@ -60,7 +253,7 @@ async function listRows<T>(
 
   const { data, error } = await query;
   raiseIfError(error);
-  return (data ?? []) as T[];
+  return (data ?? []) as AppTableRows[TTable][];
 }
 
 async function listStarterPresence(supabase: SupabaseClient, table: string, userId: string) {
@@ -210,23 +403,23 @@ export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Pr
     reminderRules,
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
-    listRows<any>(supabase, "accounts", user.id, "created_at", true),
-    listRows<any>(supabase, "categories", user.id, "created_at", true),
-    listRows<any>(supabase, "budget_cycles", user.id, "start_on", false),
-    listRows<any>(supabase, "budget_category_allocations", user.id, "created_at", true),
-    listRows<any>(supabase, "transactions", user.id, "occurred_on", false),
-    listRows<any>(supabase, "recurring_plans", user.id, "next_occurrence_on", true),
-    listRows<any>(supabase, "debts", user.id, "created_at", false),
-    listRows<any>(supabase, "debt_installments", user.id, "due_on", true),
-    listRows<any>(supabase, "debt_payments", user.id, "paid_on", false),
-    listRows<any>(supabase, "projects", user.id, "created_at", false),
-    listRows<any>(supabase, "tasks", user.id, "created_at", false),
-    listRows<any>(supabase, "subtasks", user.id, "created_at", true),
-    listRows<any>(supabase, "notes", user.id, "created_at", false),
-    listRows<any>(supabase, "note_links", user.id, "created_at", true),
-    listRows<any>(supabase, "wish_items", user.id, "created_at", false),
-    listRows<any>(supabase, "shopping_items", user.id, "created_at", false),
-    listRows<any>(supabase, "reminder_rules", user.id, "created_at", true),
+    listRows(supabase, "accounts", user.id, "created_at", true),
+    listRows(supabase, "categories", user.id, "created_at", true),
+    listRows(supabase, "budget_cycles", user.id, "start_on", false),
+    listRows(supabase, "budget_category_allocations", user.id, "created_at", true),
+    listRows(supabase, "transactions", user.id, "occurred_on", false),
+    listRows(supabase, "recurring_plans", user.id, "next_occurrence_on", true),
+    listRows(supabase, "debts", user.id, "created_at", false),
+    listRows(supabase, "debt_installments", user.id, "due_on", true),
+    listRows(supabase, "debt_payments", user.id, "paid_on", false),
+    listRows(supabase, "projects", user.id, "created_at", false),
+    listRows(supabase, "tasks", user.id, "created_at", false),
+    listRows(supabase, "subtasks", user.id, "created_at", true),
+    listRows(supabase, "notes", user.id, "created_at", false),
+    listRows(supabase, "note_links", user.id, "created_at", true),
+    listRows(supabase, "wish_items", user.id, "created_at", false),
+    listRows(supabase, "shopping_items", user.id, "created_at", false),
+    listRows(supabase, "reminder_rules", user.id, "created_at", true),
   ]);
 
   raiseIfError(profileRows.error);
@@ -415,7 +608,7 @@ export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Pr
 }
 
 async function getDefaultExpenseCategoryId(supabase: SupabaseClient, userId: string) {
-  const categories = await listRows<any>(supabase, "categories", userId, "created_at", true);
+  const categories = await listRows(supabase, "categories", userId, "created_at", true);
 
   return (
     categories.find((item) => item.name === "Cicilan")?.id ??
@@ -424,7 +617,7 @@ async function getDefaultExpenseCategoryId(supabase: SupabaseClient, userId: str
 }
 
 async function getDefaultPaymentAccountId(supabase: SupabaseClient, userId: string) {
-  const accounts = await listRows<any>(supabase, "accounts", userId, "created_at", true);
+  const accounts = await listRows(supabase, "accounts", userId, "created_at", true);
 
   return accounts.find((item) => item.type === "bank")?.id ?? accounts[0]?.id;
 }
@@ -647,7 +840,7 @@ async function softDeleteTransactionsBySource(
   sourceType: "shopping" | "debt_installment",
   sourceId: string,
 ) {
-  const transactions = await listRows<any>(supabase, "transactions", userId, "created_at", false);
+  const transactions = await listRows(supabase, "transactions", userId, "created_at", false);
   const linked = transactions.filter(
     (item) => item.source_type === sourceType && item.source_id === sourceId,
   );
@@ -694,7 +887,7 @@ async function softDeleteTransactionsBySource(
 }
 
 async function persistDebtSummary(supabase: SupabaseClient, userId: string) {
-  const debts = (await listRows<any>(supabase, "debts", userId, "created_at", false)).map(
+  const debts = (await listRows(supabase, "debts", userId, "created_at", false)).map(
     (item) => ({
       id: item.id,
       name: item.name,
@@ -709,7 +902,7 @@ async function persistDebtSummary(supabase: SupabaseClient, userId: string) {
     }),
   );
   const installments = (
-    await listRows<any>(supabase, "debt_installments", userId, "due_on", true)
+    await listRows(supabase, "debt_installments", userId, "due_on", true)
   ).map((item) => ({
     id: item.id,
     debtId: item.debt_id,
@@ -722,7 +915,7 @@ async function persistDebtSummary(supabase: SupabaseClient, userId: string) {
     paidOn: item.paid_on ?? undefined,
     note: item.note ?? undefined,
   }));
-  const payments = (await listRows<any>(supabase, "debt_payments", userId, "paid_on", false)).map(
+  const payments = (await listRows(supabase, "debt_payments", userId, "paid_on", false)).map(
     (item) => ({
       id: item.id,
       debtId: item.debt_id,

@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type ReactNode,
@@ -568,7 +569,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function flushOutbox() {
+  const flushOutbox = useEffectEvent(async () => {
     if (outboxRef.current.length === 0) {
       return;
     }
@@ -590,7 +591,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     saveOutbox(remaining);
-  }
+  });
 
   useEffect(() => {
     async function bootstrap() {

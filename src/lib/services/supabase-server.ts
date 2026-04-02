@@ -60,7 +60,7 @@ export async function updateSupabaseSession(request: NextRequest) {
   }
 
   const { url, key } = getSupabaseEnv();
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: {
       headers: request.headers,
     },

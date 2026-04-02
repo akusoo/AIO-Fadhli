@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   HandCoins,
@@ -313,24 +313,31 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const moduleJumpItems = filteredQuickJumpItems.filter((item) => item.group === "modules");
   const attentionJumpItems = filteredQuickJumpItems.filter((item) => item.group === "attention");
+  const openQuickJump = () => setIsQuickJumpOpen(true);
+  const closeQuickJump = () => {
+    setIsQuickJumpOpen(false);
+    setQuickJumpQuery("");
+  };
+  const toggleQuickJump = useEffectEvent(() => {
+    if (isQuickJumpOpen) {
+      closeQuickJump();
+      return;
+    }
+
+    openQuickJump();
+  });
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setIsQuickJumpOpen((current) => !current);
+        toggleQuickJump();
       }
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  useEffect(() => {
-    if (!isQuickJumpOpen) {
-      setQuickJumpQuery("");
-    }
-  }, [isQuickJumpOpen]);
 
   return (
     <div className="min-h-screen overflow-x-clip pb-28 lg:pb-0">
@@ -351,7 +358,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <QuickJumpTrigger
             className="mt-4 w-full"
             label="Cari modul atau perhatian"
-            onClick={() => setIsQuickJumpOpen(true)}
+            onClick={openQuickJump}
           />
 
           <nav className="mt-5 flex flex-1 flex-col gap-1.5 overflow-auto pr-1">
@@ -393,7 +400,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <QuickJumpTrigger
                   className="min-w-[220px]"
                   label="Cari cepat"
-                  onClick={() => setIsQuickJumpOpen(true)}
+                  onClick={openQuickJump}
                 />
                 <div className="hidden items-center gap-3 rounded-[18px] border border-[var(--border)] bg-[rgba(255,255,255,0.76)] px-3 py-2 shadow-[var(--shadow-sm)] sm:flex">
                   <span className="flex size-9 items-center justify-center rounded-[14px] bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent-strong)]">
@@ -441,7 +448,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               label="Cari modul"
               onClick={() => {
                 setIsMobileOpen(false);
-                setIsQuickJumpOpen(true);
+                openQuickJump();
               }}
             />
             <div className="mt-4 flex flex-1 flex-col gap-2 overflow-auto">
@@ -460,7 +467,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {isQuickJumpOpen ? (
         <div className="fixed inset-0 z-[60] bg-[rgba(23,37,47,0.34)] px-4 py-6 md:px-6">
-          <div className="absolute inset-0" onClick={() => setIsQuickJumpOpen(false)} />
+          <div className="absolute inset-0" onClick={closeQuickJump} />
           <div className="relative mx-auto flex h-full max-h-[680px] w-full max-w-2xl flex-col rounded-[28px] border border-[var(--border)] bg-[rgba(255,252,249,0.98)] p-4 shadow-[var(--shadow-lg)] md:p-5">
             <div className="flex items-center gap-3">
               <Input
@@ -471,7 +478,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               />
               <button
                 className="flex size-11 shrink-0 items-center justify-center rounded-[16px] border border-[var(--border)] bg-white"
-                onClick={() => setIsQuickJumpOpen(false)}
+                onClick={closeQuickJump}
                 type="button"
               >
                 <X className="size-4" strokeWidth={2.2} />
@@ -492,12 +499,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <div className="space-y-5">
                   <QuickJumpSection
                     items={moduleJumpItems}
-                    onSelect={() => setIsQuickJumpOpen(false)}
+                    onSelect={closeQuickJump}
                     title="Modul"
                   />
                   <QuickJumpSection
                     items={attentionJumpItems}
-                    onSelect={() => setIsQuickJumpOpen(false)}
+                    onSelect={closeQuickJump}
                     title="Perlu perhatian"
                   />
                 </div>
