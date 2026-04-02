@@ -1,10 +1,15 @@
 import type { UpdateShoppingItemInput } from "@/lib/domain/models";
 import { buildAppSnapshot, softDeleteById } from "@/lib/server/app-backend";
-import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
+import {
+  errorJson,
+  getAuthedRouteContext,
+  okJson,
+  type RouteParamsContext,
+} from "@/lib/server/routes";
 
 export async function PATCH(
   request: Request,
-  contextParam: RouteContext<"/api/shopping/[itemId]">,
+  contextParam: RouteParamsContext<"itemId">,
 ) {
   const context = await getAuthedRouteContext();
 
@@ -46,7 +51,7 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  contextParam: RouteContext<"/api/shopping/[itemId]">,
+  contextParam: RouteParamsContext<"itemId">,
 ) {
   const context = await getAuthedRouteContext();
 

@@ -3,6 +3,10 @@ import { hasSupabaseEnv } from "@/lib/services/supabase-env";
 import { createSupabaseRouteHandlerClient } from "@/lib/services/supabase-server";
 import { ensureUserBootstrap } from "@/lib/server/app-backend";
 
+export type RouteParamsContext<TKey extends string> = {
+  params: Promise<Record<TKey, string>>;
+};
+
 export async function getAuthedRouteContext() {
   if (!hasSupabaseEnv()) {
     return {

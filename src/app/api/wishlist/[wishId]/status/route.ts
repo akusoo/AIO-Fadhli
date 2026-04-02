@@ -1,10 +1,15 @@
 import type { SetWishStatusInput } from "@/lib/domain/models";
 import { buildAppSnapshot } from "@/lib/server/app-backend";
-import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
+import {
+  errorJson,
+  getAuthedRouteContext,
+  okJson,
+  type RouteParamsContext,
+} from "@/lib/server/routes";
 
 export async function POST(
   request: Request,
-  contextParam: RouteContext<"/api/wishlist/[wishId]/status">,
+  contextParam: RouteParamsContext<"wishId">,
 ) {
   const context = await getAuthedRouteContext();
 

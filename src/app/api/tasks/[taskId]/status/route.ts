@@ -1,11 +1,16 @@
 import { buildAppSnapshot } from "@/lib/server/app-backend";
-import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
+import {
+  errorJson,
+  getAuthedRouteContext,
+  okJson,
+  type RouteParamsContext,
+} from "@/lib/server/routes";
 import { advanceRecurringTask } from "@/lib/tasks";
 import { isoToday } from "@/lib/utils";
 
 export async function POST(
   request: Request,
-  contextParam: RouteContext<"/api/tasks/[taskId]/status">,
+  contextParam: RouteParamsContext<"taskId">,
 ) {
   const context = await getAuthedRouteContext();
 

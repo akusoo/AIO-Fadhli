@@ -2,11 +2,16 @@ import {
   buildAppSnapshot,
   recordShoppingPurchaseWithSideEffects,
 } from "@/lib/server/app-backend";
-import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
+import {
+  errorJson,
+  getAuthedRouteContext,
+  okJson,
+  type RouteParamsContext,
+} from "@/lib/server/routes";
 
 export async function POST(
   _request: Request,
-  contextParam: RouteContext<"/api/shopping/[itemId]/record-purchase">,
+  contextParam: RouteParamsContext<"itemId">,
 ) {
   const context = await getAuthedRouteContext();
 

@@ -1,9 +1,14 @@
 import { buildAppSnapshot, moveWishToShoppingWithSideEffects } from "@/lib/server/app-backend";
-import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
+import {
+  errorJson,
+  getAuthedRouteContext,
+  okJson,
+  type RouteParamsContext,
+} from "@/lib/server/routes";
 
 export async function POST(
   _request: Request,
-  contextParam: RouteContext<"/api/wishlist/[wishId]/move-to-shopping">,
+  contextParam: RouteParamsContext<"wishId">,
 ) {
   const context = await getAuthedRouteContext();
 

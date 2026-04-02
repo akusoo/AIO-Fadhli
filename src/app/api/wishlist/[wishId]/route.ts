@@ -1,10 +1,15 @@
 import type { UpdateWishInput } from "@/lib/domain/models";
 import { buildAppSnapshot, softDeleteById } from "@/lib/server/app-backend";
-import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
+import {
+  errorJson,
+  getAuthedRouteContext,
+  okJson,
+  type RouteParamsContext,
+} from "@/lib/server/routes";
 
 export async function PATCH(
   request: Request,
-  contextParam: RouteContext<"/api/wishlist/[wishId]">,
+  contextParam: RouteParamsContext<"wishId">,
 ) {
   const context = await getAuthedRouteContext();
 
@@ -44,7 +49,7 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  contextParam: RouteContext<"/api/wishlist/[wishId]">,
+  contextParam: RouteParamsContext<"wishId">,
 ) {
   const context = await getAuthedRouteContext();
 

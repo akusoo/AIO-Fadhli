@@ -1,10 +1,15 @@
 import type { SetNoteLinksInput } from "@/lib/domain/models";
 import { buildAppSnapshot, replaceNoteLinks } from "@/lib/server/app-backend";
-import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
+import {
+  errorJson,
+  getAuthedRouteContext,
+  okJson,
+  type RouteParamsContext,
+} from "@/lib/server/routes";
 
 export async function PUT(
   request: Request,
-  contextParam: RouteContext<"/api/notes/[noteId]/links">,
+  contextParam: RouteParamsContext<"noteId">,
 ) {
   const context = await getAuthedRouteContext();
 
