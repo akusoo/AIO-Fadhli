@@ -220,7 +220,12 @@ describeIfIntegration("app backend integration", () => {
   });
 
   afterAll(async () => {
-    await deleteIntegrationUser(primaryAdmin, primaryUser.user.id).catch(() => undefined);
-    await deleteIntegrationUser(secondaryAdmin, secondaryUser.user.id).catch(() => undefined);
+    if (primaryAdmin && primaryUser?.user?.id) {
+      await deleteIntegrationUser(primaryAdmin, primaryUser.user.id).catch(() => undefined);
+    }
+
+    if (secondaryAdmin && secondaryUser?.user?.id) {
+      await deleteIntegrationUser(secondaryAdmin, secondaryUser.user.id).catch(() => undefined);
+    }
   });
 });

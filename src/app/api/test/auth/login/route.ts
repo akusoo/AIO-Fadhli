@@ -5,6 +5,7 @@ import {
   getE2ETestCredentials,
   getE2ETestRunId,
   guardE2ERoute,
+  retryE2EAuthOperation,
 } from "@/lib/server/e2e";
 
 export async function GET(request: Request) {
@@ -15,8 +16,6 @@ export async function GET(request: Request) {
   }
 
   const runId = getE2ETestRunId(request);
-  await ensureE2ETestUser(runId);
-
   const url = new URL(request.url);
   const nextPath = url.searchParams.get("next") ?? "/dashboard";
   const { email, password } = getE2ETestCredentials(runId);
@@ -24,10 +23,23 @@ export async function GET(request: Request) {
 
   await supabase.auth.signOut();
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  let { error } = await retryE2EAuthOperation(() =>
+    supabase.auth.signInWithPassword({
+      email,
+      password,
+    }),
+  );
+
+  if (error) {
+    await ensureE2ETestUser(runId);
+
+    ({ error } = await retryE2EAuthOperation(() =>
+      supabase.auth.signInWithPassword({
+        email,
+        password,
+      }),
+    ));
+  }
 
   if (error) {
     const response = NextResponse.json({ error: error.message }, { status: 500 });

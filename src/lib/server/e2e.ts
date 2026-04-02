@@ -1,10 +1,37 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdmin, hasSupabaseAdminEnv } from "@/lib/services/supabase-admin";
 
+const E2E_AUTH_RETRY_MAX_ATTEMPTS = 4;
+const E2E_AUTH_RETRY_DELAY_MS = 500;
+
 function raiseIfError(error: { message: string } | null) {
   if (error) {
     throw new Error(error.message);
   }
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function retryE2EAuthOperation<T>(operation: () => Promise<T>) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < E2E_AUTH_RETRY_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === E2E_AUTH_RETRY_MAX_ATTEMPTS - 1) {
+        throw error;
+      }
+
+      await wait(E2E_AUTH_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+
+  throw lastError;
 }
 
 function sanitizeRunId(value: string) {
@@ -65,38 +92,25 @@ export async function ensureE2ETestUser(runId?: string) {
 
   const admin = createSupabaseAdmin();
   const { email, password } = getE2ETestCredentials(runId);
-  const { data, error } = await admin.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  });
-
-  raiseIfError(error);
-
-  const existingUser = data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
-
-  if (!existingUser) {
-    const { error: createError } = await admin.auth.admin.createUser({
+  const { error: createError } = await retryE2EAuthOperation(() =>
+    admin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: {
         name: "E2E Test User",
       },
-    });
+    }),
+  );
 
+  if (
+    createError &&
+    !createError.message.toLowerCase().includes("already") &&
+    !createError.message.toLowerCase().includes("registered") &&
+    !createError.message.toLowerCase().includes("exists")
+  ) {
     raiseIfError(createError);
-    return { email, password };
   }
 
-  const { error: updateError } = await admin.auth.admin.updateUserById(existingUser.id, {
-    password,
-    email_confirm: true,
-    user_metadata: {
-      ...existingUser.user_metadata,
-      name: "E2E Test User",
-    },
-  });
-
-  raiseIfError(updateError);
   return { email, password };
 }

@@ -23,6 +23,8 @@ const RESET_TABLES = [
   "categories",
   "accounts",
 ] as const;
+const SUPABASE_AUTH_RETRY_MAX_ATTEMPTS = 4;
+const SUPABASE_AUTH_RETRY_DELAY_MS = 500;
 
 type IntegrationEnv = {
   anonKey: string;
@@ -32,6 +34,30 @@ type IntegrationEnv = {
 
 function sanitizeRunId(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 32) || "local";
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function retrySupabaseOperation<T>(operation: () => Promise<T>) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < SUPABASE_AUTH_RETRY_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === SUPABASE_AUTH_RETRY_MAX_ATTEMPTS - 1) {
+        throw error;
+      }
+
+      await wait(SUPABASE_AUTH_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+
+  throw lastError;
 }
 
 function getIntegrationEnv(): IntegrationEnv | null {
@@ -81,58 +107,39 @@ export async function ensureIntegrationUser(label: string) {
   const email = `integration+${normalizedLabel}-${runId}@example.com`;
   const password = `AioIntegration!${runId.slice(0, 8) || "local"}`;
   const admin = getAdminSupabase();
-
-  const { data: listed, error: listError } = await admin.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  });
-
-  if (listError) {
-    throw listError;
-  }
-
-  const existingUser = listed.users.find((entry) => entry.email?.toLowerCase() === email);
-
-  if (!existingUser) {
-    const { data, error } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        name: `Integration ${normalizedLabel}`,
-      },
-    });
-
-    if (error || !data.user) {
-      throw error ?? new Error("Gagal membuat user integration.");
-    }
+  try {
+    const existingUser = await createUserClient(email, password);
 
     return {
       admin,
       email,
       password,
-      user: data.user,
+      user: existingUser.user,
     };
+  } catch {
+    const { data, error } = await retrySupabaseOperation(() =>
+      admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          name: `Integration ${normalizedLabel}`,
+        },
+      }),
+    );
+
+    if (error || !data.user) {
+      throw error ?? new Error("Gagal membuat user integration.");
+    }
   }
 
-  const { data, error } = await admin.auth.admin.updateUserById(existingUser.id, {
-    password,
-    email_confirm: true,
-    user_metadata: {
-      ...existingUser.user_metadata,
-      name: `Integration ${normalizedLabel}`,
-    },
-  });
-
-  if (error || !data.user) {
-    throw error ?? new Error("Gagal memperbarui user integration.");
-  }
+  const createdUser = await createUserClient(email, password);
 
   return {
     admin,
     email,
     password,
-    user: data.user,
+    user: createdUser.user,
   };
 }
 
@@ -150,7 +157,9 @@ export async function createUserClient(email: string, password: string) {
     },
   });
 
-  const { error } = await client.auth.signInWithPassword({ email, password });
+  const { error } = await retrySupabaseOperation(() =>
+    client.auth.signInWithPassword({ email, password }),
+  );
 
   if (error) {
     throw error;
@@ -159,7 +168,7 @@ export async function createUserClient(email: string, password: string) {
   const {
     data: { user },
     error: userError,
-  } = await client.auth.getUser();
+  } = await retrySupabaseOperation(() => client.auth.getUser());
 
   if (userError || !user) {
     throw userError ?? new Error("Gagal membaca user integration.");
@@ -173,14 +182,18 @@ export async function createUserClient(email: string, password: string) {
 
 export async function cleanupUserData(admin: SupabaseClient, userId: string) {
   for (const table of RESET_TABLES) {
-    const { error } = await admin.from(table).delete().eq("user_id", userId);
+    const { error } = await retrySupabaseOperation(async () =>
+      await admin.from(table).delete().eq("user_id", userId),
+    );
 
     if (error) {
       throw error;
     }
   }
 
-  const { error } = await admin.from("profiles").delete().eq("id", userId);
+  const { error } = await retrySupabaseOperation(async () =>
+    await admin.from("profiles").delete().eq("id", userId),
+  );
 
   if (error) {
     throw error;
@@ -189,7 +202,7 @@ export async function cleanupUserData(admin: SupabaseClient, userId: string) {
 
 export async function deleteIntegrationUser(admin: SupabaseClient, userId: string) {
   await cleanupUserData(admin, userId).catch(() => undefined);
-  const { error } = await admin.auth.admin.deleteUser(userId);
+  const { error } = await retrySupabaseOperation(() => admin.auth.admin.deleteUser(userId));
 
   if (error) {
     throw error;

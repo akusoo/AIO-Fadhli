@@ -17,6 +17,10 @@ import {
 import { createId, isoToday } from "@/lib/utils";
 
 const DEFAULT_LOCATION = "Jakarta";
+const PROFILE_BOOTSTRAP_MAX_ATTEMPTS = 4;
+const PROFILE_BOOTSTRAP_RETRY_DELAY_MS = 250;
+const SUPABASE_READ_MAX_ATTEMPTS = 3;
+const SUPABASE_READ_RETRY_DELAY_MS = 400;
 
 type AccountRow = {
   id: string;
@@ -213,10 +217,59 @@ type AppTableRows = {
   reminder_rules: ReminderRuleRow;
 };
 
-function raiseIfError(error: { message: string } | null) {
+type SupabaseErrorLike = {
+  message: string;
+  code?: string;
+} | null;
+
+function raiseIfError(error: SupabaseErrorLike) {
   if (error) {
     throw new Error(error.message);
   }
+}
+
+function isProfileBootstrapForeignKeyError(error: SupabaseErrorLike) {
+  return Boolean(
+    error &&
+      (error.code === "23503" ||
+        error.message.includes('violates foreign key constraint "profiles_id_fkey"')),
+  );
+}
+
+function isTransientSupabaseReadError(error: SupabaseErrorLike) {
+  return Boolean(
+    error &&
+      (error.message.includes("fetch failed") ||
+        error.message.includes("Connect Timeout Error") ||
+        error.message.includes("timeout")),
+  );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runSupabaseRead<T>(
+  operation: () => Promise<{ data: T | null; error: SupabaseErrorLike }>,
+) {
+  let lastResult: { data: T | null; error: SupabaseErrorLike } | null = null;
+
+  for (let attempt = 0; attempt < SUPABASE_READ_MAX_ATTEMPTS; attempt += 1) {
+    const result = await operation();
+    lastResult = result;
+
+    if (
+      !result.error ||
+      !isTransientSupabaseReadError(result.error) ||
+      attempt === SUPABASE_READ_MAX_ATTEMPTS - 1
+    ) {
+      return result;
+    }
+
+    await wait(SUPABASE_READ_RETRY_DELAY_MS * (attempt + 1));
+  }
+
+  return lastResult as { data: T | null; error: SupabaseErrorLike };
 }
 
 function bootstrapId(userId: string, key: string) {
@@ -247,39 +300,31 @@ async function listRows<TTable extends keyof AppTableRows>(
   orderBy?: string,
   ascending = true,
 ) {
-  let query = supabase.from(table).select("*").eq("user_id", userId).is("deleted_at", null);
+  const { data, error } = await runSupabaseRead(async () => {
+    let query = supabase.from(table).select("*").eq("user_id", userId).is("deleted_at", null);
 
-  if (orderBy) {
-    query = query.order(orderBy, { ascending });
-  }
+    if (orderBy) {
+      query = query.order(orderBy, { ascending });
+    }
 
-  const { data, error } = await query;
+    return await query;
+  });
+
   raiseIfError(error);
   return (data ?? []) as AppTableRows[TTable][];
 }
 
 async function listStarterPresence(supabase: SupabaseClient, table: string, userId: string) {
-  const { data, error } = await supabase
-    .from(table)
-    .select("id")
-    .eq("user_id", userId)
-    .is("deleted_at", null)
-    .limit(1);
+  const { data, error } = await runSupabaseRead<{ id: string }[]>(async () =>
+    await supabase.from(table).select("id").eq("user_id", userId).is("deleted_at", null).limit(1),
+  );
 
   raiseIfError(error);
   return (data ?? []).length > 0;
 }
 
-export async function ensureUserBootstrap(supabase: SupabaseClient, user: User) {
-  const { data: existingProfile, error: profileError } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  raiseIfError(profileError);
-
-  if (!existingProfile) {
+async function ensureProfileRow(supabase: SupabaseClient, user: User) {
+  for (let attempt = 0; attempt < PROFILE_BOOTSTRAP_MAX_ATTEMPTS; attempt += 1) {
     const { error } = await supabase.from("profiles").upsert(
       {
         id: user.id,
@@ -290,7 +335,30 @@ export async function ensureUserBootstrap(supabase: SupabaseClient, user: User) 
       { onConflict: "id" },
     );
 
-    raiseIfError(error);
+    if (!error) {
+      return;
+    }
+
+    if (
+      !isProfileBootstrapForeignKeyError(error) ||
+      attempt === PROFILE_BOOTSTRAP_MAX_ATTEMPTS - 1
+    ) {
+      raiseIfError(error);
+    }
+
+    await wait(PROFILE_BOOTSTRAP_RETRY_DELAY_MS * (attempt + 1));
+  }
+}
+
+export async function ensureUserBootstrap(supabase: SupabaseClient, user: User) {
+  const { data: existingProfile, error: profileError } = await runSupabaseRead(async () =>
+    await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+  );
+
+  raiseIfError(profileError);
+
+  if (!existingProfile) {
+    await ensureProfileRow(supabase, user);
   }
 
   if (!(await listStarterPresence(supabase, "categories", user.id))) {

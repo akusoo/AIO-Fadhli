@@ -23,7 +23,7 @@ App akan terbuka di `http://localhost:3000`.
 - Shell navigasi desktop `sidebar` + mobile `tab/sheet`
 - Workspace aktif untuk dashboard, finance, debt, tasks, projects, notes, wishlist, dan shopping
 - Auth magic link + boot snapshot backend
-- Preview reminder Telegram berbasis data, masih `preview only`
+- Integrasi Telegram masih ada di repo sebagai `preview only`, tetapi keluar dari scope release `v1`
 
 ## File penting
 
@@ -43,10 +43,12 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_DB_URL=
+# Harus tetap false untuk release/production.
 ENABLE_E2E_TEST_ROUTES=false
 E2E_TEST_SECRET=
 E2E_TEST_EMAIL=
 E2E_TEST_PASSWORD=
+# Opsional, di luar scope release v1.
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 TELEGRAM_OWNER_USER_ID=
@@ -68,7 +70,9 @@ Untuk mulai menghubungkan project ke Supabase:
 3. Jalankan SQL migration di project Supabase
 4. Buka `/auth/sign-in` untuk login pertama dan bootstrap starter data minimal
 
-## Telegram bot
+## Telegram bot (Post-v1)
+
+Telegram resmi keluar dari scope release `v1`. Kode preview-nya masih disimpan di repo, tetapi app inti tidak bergantung pada fitur ini untuk rilis.
 
 Bot Telegram sekarang disiapkan untuk pola `single-owner personal app`:
 
@@ -85,6 +89,8 @@ TELEGRAM_OWNER_USER_ID=
 TELEGRAM_WEBHOOK_SECRET=
 SUPABASE_SERVICE_ROLE_KEY=
 ```
+
+Untuk release `v1`, bagian ini boleh dibiarkan tidak aktif.
 
 Catatan setup:
 
@@ -105,6 +111,11 @@ E2E_TEST_SECRET= # opsional, default lokal: aio-local-e2e
 E2E_TEST_EMAIL= # opsional, default lokal disediakan
 E2E_TEST_PASSWORD= # opsional, default lokal disediakan
 ```
+
+Catatan release:
+
+- `ENABLE_E2E_TEST_ROUTES` harus tetap `false` di production.
+- Route helper test hanya untuk local/preview test environment.
 
 Jalankan:
 
