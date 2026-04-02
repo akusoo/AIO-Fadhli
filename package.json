@@ -7,11 +7,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
-    "e2e": "playwright test",
+    "typegen": "next typegen",
+    "typecheck": "pnpm typegen && tsc --noEmit",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:component": "vitest run --config vitest.component.config.ts",
+    "test:contracts": "vitest run --config vitest.contracts.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e:smoke": "playwright test --grep @smoke",
+    "test:e2e:regression": "playwright test --grep @regression",
+    "test:ci:fast": "pnpm lint && pnpm typecheck && pnpm test:unit -- --coverage && pnpm test:component -- --coverage && pnpm test:contracts -- --coverage",
+    "test:ci:full": "pnpm test:ci:fast && pnpm build && pnpm test:integration -- --coverage && pnpm test:e2e:smoke",
+    "e2e": "pnpm test:e2e:regression",
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.2.8",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.100.1",
     "lucide-react": "^1.7.0",
@@ -22,12 +33,18 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "jsdom": "^29.0.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.2"
   }
 }

@@ -4,29 +4,38 @@ function getE2ESecret() {
   return process.env.E2E_TEST_SECRET ?? "aio-local-e2e";
 }
 
+function getTestRunId() {
+  return process.env.TEST_RUN_ID ?? "local";
+}
+
 export async function loginAsE2EUser(page: Page) {
-  await page.goto(`/api/test/auth/login?secret=${encodeURIComponent(getE2ESecret())}&next=/dashboard`);
+  await page.goto(
+    `/api/test/auth/login?secret=${encodeURIComponent(getE2ESecret())}&runId=${encodeURIComponent(getTestRunId())}&next=/dashboard`,
+  );
   await page.waitForURL("**/dashboard");
   await expectPageHeading(
     page,
-    /Halaman masuk yang ringkas untuk melihat apa yang perlu perhatian/i,
+    /Dashboard yang ringkas dan tenang/i,
   );
 }
 
 export async function resetTestData(page: Page) {
-  const result = await page.evaluate(async (secret) => {
-    const response = await fetch("/api/test/reset", {
-      method: "POST",
+  const secret = getE2ESecret();
+  const runId = getTestRunId();
+  const response = await page.context().request.post(
+    `/api/test/reset?secret=${encodeURIComponent(secret)}&runId=${encodeURIComponent(runId)}`,
+    {
       headers: {
         "x-e2e-secret": secret,
+        "x-test-run-id": runId,
       },
-    });
+    },
+  );
 
-    return {
-      status: response.status,
-      body: await response.text(),
-    };
-  }, getE2ESecret());
+  const result = {
+    status: response.status(),
+    body: await response.text(),
+  };
 
   expect(result.status, result.body).toBe(200);
 }

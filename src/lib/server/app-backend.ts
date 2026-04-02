@@ -169,6 +169,8 @@ type WishItemRow = {
   priority: AppSnapshot["wishItems"][number]["priority"];
   status: AppSnapshot["wishItems"][number]["status"];
   note: string | null;
+  source_url: string | null;
+  image_url: string | null;
 };
 
 type ShoppingItemRow = {
@@ -582,6 +584,8 @@ export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Pr
       priority: item.priority,
       status: item.status,
       note: item.note ?? undefined,
+      sourceUrl: item.source_url ?? undefined,
+      imageUrl: item.image_url ?? undefined,
     })),
     shoppingItems: shoppingItems.map((item) => ({
       id: item.id,

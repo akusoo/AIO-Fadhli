@@ -20,6 +20,8 @@ export async function POST(request: Request) {
       priority: body.priority,
       status: "wish",
       note: body.note ?? null,
+      source_url: body.sourceUrl ?? null,
+      image_url: body.imageUrl ?? null,
     });
 
     if (error) {

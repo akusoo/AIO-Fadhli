@@ -6,10 +6,22 @@ on:
       - "**"
   pull_request:
 
+permissions:
+  contents: read
+  deployments: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  quality:
-    name: Quality Checks
+  verify-fast:
+    name: Verify Fast
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
 
     steps:
       - name: Checkout repository
@@ -35,24 +47,40 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Build
-        run: pnpm build
+      - name: Unit tests
+        run: pnpm test:unit -- --coverage
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VITEST_COVERAGE_DIR: test-results/vitest/unit/coverage
+          VITEST_JUNIT_FILE: test-results/vitest/unit/junit.xml
 
-  e2e:
-    name: End-to-End
+      - name: Component tests
+        run: pnpm test:component -- --coverage
+        env:
+          VITEST_COVERAGE_DIR: test-results/vitest/component/coverage
+          VITEST_JUNIT_FILE: test-results/vitest/component/junit.xml
+
+      - name: Contract tests
+        run: pnpm test:contracts -- --coverage
+        env:
+          VITEST_COVERAGE_DIR: test-results/vitest/contracts/coverage
+          VITEST_JUNIT_FILE: test-results/vitest/contracts/junit.xml
+
+      - name: Upload fast-suite artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-fast-artifacts
+          path: test-results/vitest
+          if-no-files-found: ignore
+
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    needs: quality
+    needs: verify-fast
     env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      E2E_TEST_SECRET: ${{ secrets.E2E_TEST_SECRET }}
-      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
-      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
 
     steps:
       - name: Checkout repository
@@ -69,39 +97,152 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Decide whether E2E can run
-        id: e2e-guard
-        run: |
-          if [ -n "${NEXT_PUBLIC_SUPABASE_URL}" ] && [ -n "${NEXT_PUBLIC_SUPABASE_ANON_KEY}" ] && [ -n "${SUPABASE_SERVICE_ROLE_KEY}" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "E2E secrets are present. Full Playwright suite will run."
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "E2E secrets are missing. Playwright suite will be skipped."
-          fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        run: pnpm build
+
+  integration-db:
+    name: Integration DB
+    runs-on: ubuntu-latest
+    needs: verify-fast
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+      TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-integration
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
-        if: steps.e2e-guard.outputs.enabled == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Run hosted Supabase integration suite
+        run: pnpm test:integration -- --coverage
+        env:
+          VITEST_COVERAGE_DIR: test-results/vitest/integration/coverage
+          VITEST_JUNIT_FILE: test-results/vitest/integration/junit.xml
+
+      - name: Upload integration artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-db-artifacts
+          path: test-results/vitest/integration
+          if-no-files-found: ignore
+
+  e2e-smoke:
+    name: E2E Smoke
+    runs-on: ubuntu-latest
+    needs: verify-fast
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+      E2E_TEST_SECRET: ${{ secrets.TEST_E2E_TEST_SECRET }}
+      E2E_TEST_EMAIL: ${{ secrets.TEST_E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.TEST_E2E_TEST_PASSWORD }}
+      TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-smoke
+      PLAYWRIGHT_RETRIES: 1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
-        if: steps.e2e-guard.outputs.enabled == 'true'
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run end-to-end tests
-        if: steps.e2e-guard.outputs.enabled == 'true'
-        run: pnpm e2e
+      - name: Run local smoke E2E
+        run: pnpm test:e2e:smoke
 
-      - name: Upload Playwright artifacts
-        if: always() && steps.e2e-guard.outputs.enabled == 'true'
+      - name: Upload Playwright smoke artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-artifacts
+          name: e2e-smoke-artifacts
           path: |
             playwright-report
             test-results
           if-no-files-found: ignore
 
-      - name: Note skipped E2E
-        if: steps.e2e-guard.outputs.enabled != 'true'
-        run: echo "Skipping E2E because required Supabase secrets are not configured in GitHub Actions."
+  preview-smoke:
+    name: Preview Smoke
+    runs-on: ubuntu-latest
+    needs: verify-fast
+    env:
+      E2E_TEST_SECRET: ${{ secrets.TEST_E2E_TEST_SECRET }}
+      TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-preview
+      PLAYWRIGHT_RETRIES: 1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Wait for Vercel preview deployment
+        id: preview
+        run: node scripts/ci/wait-for-preview.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PREVIEW_TIMEOUT_MS: 900000
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run preview smoke tests
+        run: pnpm test:e2e:smoke
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ steps.preview.outputs.preview_url }}
+
+      - name: Upload preview smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-smoke-artifacts
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore

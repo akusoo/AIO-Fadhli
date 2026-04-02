@@ -220,6 +220,8 @@ export type WishItem = {
   priority: Priority;
   status: WishStatus;
   note?: string;
+  sourceUrl?: string;
+  imageUrl?: string;
 };
 
 export type ShoppingItem = {
@@ -407,6 +409,8 @@ export type AddWishInput = {
   targetPrice: number;
   priority: Priority;
   note?: string;
+  sourceUrl?: string;
+  imageUrl?: string;
 };
 
 export type UpdateWishInput = {
@@ -415,6 +419,8 @@ export type UpdateWishInput = {
   targetPrice: number;
   priority: Priority;
   note?: string;
+  sourceUrl?: string;
+  imageUrl?: string;
 };
 
 export type UpdateNoteInput = {

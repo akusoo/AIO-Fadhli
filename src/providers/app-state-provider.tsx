@@ -999,6 +999,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         priority: input.priority,
         status: "wish",
         note: input.note,
+        sourceUrl: input.sourceUrl,
+        imageUrl: input.imageUrl,
       });
     });
 
@@ -1017,6 +1019,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         wish.targetPrice = input.targetPrice;
         wish.priority = input.priority;
         wish.note = input.note;
+        wish.sourceUrl = input.sourceUrl;
+        wish.imageUrl = input.imageUrl;
       }
     });
 

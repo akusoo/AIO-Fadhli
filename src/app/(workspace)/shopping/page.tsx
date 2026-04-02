@@ -308,7 +308,7 @@ function ShoppingRow({
   const isBought = item.status === "bought";
 
   return (
-    <div>
+    <div data-testid={`shopping-row-${item.id}`}>
       <div className="flex flex-col gap-4 px-4 py-4 md:px-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">

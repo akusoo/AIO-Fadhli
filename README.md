@@ -57,7 +57,7 @@ TELEGRAM_WEBHOOK_SECRET=
 
 - Source of truth backend sekarang diarahkan ke `Supabase + Next.js route handlers`
 - SQL schema awal ada di `supabase/migrations/0001_init_aio_personal_tracker.sql`
-- Auth awal memakai `magic link`
+- Auth awal memakai `magic link`, dan halaman sign-in juga mendukung `email + password` untuk akun testing / manual yang sudah punya kredensial
 - Session refresh memakai `src/proxy.ts`
 - Boot snapshot dan mutasi domain hidup di route `src/app/api/**`
 

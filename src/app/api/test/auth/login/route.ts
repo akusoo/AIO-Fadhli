@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createSupabaseRouteHandlerClient } from "@/lib/services/supabase-server";
-import { ensureE2ETestUser, getE2ETestCredentials, guardE2ERoute } from "@/lib/server/e2e";
+import {
+  ensureE2ETestUser,
+  getE2ETestCredentials,
+  getE2ETestRunId,
+  guardE2ERoute,
+} from "@/lib/server/e2e";
 
 export async function GET(request: Request) {
   const guard = guardE2ERoute(request);
@@ -9,11 +14,12 @@ export async function GET(request: Request) {
     return guard;
   }
 
-  await ensureE2ETestUser();
+  const runId = getE2ETestRunId(request);
+  await ensureE2ETestUser(runId);
 
   const url = new URL(request.url);
   const nextPath = url.searchParams.get("next") ?? "/dashboard";
-  const { email, password } = getE2ETestCredentials();
+  const { email, password } = getE2ETestCredentials(runId);
   const { supabase, applyCookies } = await createSupabaseRouteHandlerClient();
 
   await supabase.auth.signOut();

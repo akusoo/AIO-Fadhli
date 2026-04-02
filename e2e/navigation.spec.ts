@@ -7,11 +7,11 @@ test.describe("workspace navigation", () => {
     await resetTestData(page);
   });
 
-  test("memuat semua halaman utama", async ({ page }) => {
+  test("@smoke @regression memuat semua halaman utama", async ({ page }) => {
     const pages = [
       {
         path: "/dashboard",
-        heading: /Halaman masuk yang ringkas untuk melihat apa yang perlu perhatian/i,
+        heading: /Dashboard yang ringkas dan tenang/i,
       },
       {
         path: "/finance",

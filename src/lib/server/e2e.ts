@@ -7,6 +7,28 @@ function raiseIfError(error: { message: string } | null) {
   }
 }
 
+function sanitizeRunId(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 24) || "local";
+}
+
+export function getE2ETestRunId(request?: Request) {
+  if (request) {
+    const url = new URL(request.url);
+    const fromRequest = url.searchParams.get("runId") ?? request.headers.get("x-test-run-id");
+
+    if (fromRequest) {
+      return sanitizeRunId(fromRequest);
+    }
+  }
+
+  return sanitizeRunId(
+    process.env.TEST_RUN_ID ??
+      process.env.GITHUB_RUN_ID ??
+      process.env.VERCEL_GIT_COMMIT_SHA ??
+      "local",
+  );
+}
+
 export function isE2ETestRoutesEnabled() {
   return process.env.ENABLE_E2E_TEST_ROUTES === "true";
 }
@@ -27,14 +49,14 @@ export function guardE2ERoute(request: Request) {
   return null;
 }
 
-export function getE2ETestCredentials() {
-  const email = process.env.E2E_TEST_EMAIL ?? "e2e+aio@example.com";
+export function getE2ETestCredentials(runId = getE2ETestRunId()) {
+  const email = process.env.E2E_TEST_EMAIL ?? `e2e+aio-${runId}@example.com`;
   const password = process.env.E2E_TEST_PASSWORD ?? "AioLocalE2E!234";
 
   return { email, password };
 }
 
-export async function ensureE2ETestUser() {
+export async function ensureE2ETestUser(runId?: string) {
   if (!hasSupabaseAdminEnv()) {
     throw new Error(
       "SUPABASE_SERVICE_ROLE_KEY belum diset. Env ini dibutuhkan untuk menyiapkan user test Playwright.",
@@ -42,7 +64,7 @@ export async function ensureE2ETestUser() {
   }
 
   const admin = createSupabaseAdmin();
-  const { email, password } = getE2ETestCredentials();
+  const { email, password } = getE2ETestCredentials(runId);
   const { data, error } = await admin.auth.admin.listUsers({
     page: 1,
     perPage: 1000,

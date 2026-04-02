@@ -27,6 +27,8 @@ export async function PATCH(
         target_price: body.targetPrice,
         priority: body.priority,
         note: body.note ?? null,
+        source_url: body.sourceUrl ?? null,
+        image_url: body.imageUrl ?? null,
       })
       .eq("id", wishId)
       .eq("user_id", context.user.id)

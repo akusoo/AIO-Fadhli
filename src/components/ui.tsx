@@ -5,11 +5,13 @@ import {
 } from "lucide-react";
 import type {
   ButtonHTMLAttributes,
+  ForwardedRef,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
@@ -55,10 +57,13 @@ type ActionButtonProps = {
   children: ReactNode;
   variant?: "primary" | "secondary" | "ghost";
   href?: string;
-  onClick?: () => void;
   type?: "button" | "submit";
   className?: string;
-};
+  onClick?: ButtonHTMLAttributes<HTMLButtonElement>["onClick"];
+} & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "children" | "className" | "onClick" | "type"
+>;
 
 export function ActionButton({
   children,
@@ -67,6 +72,7 @@ export function ActionButton({
   onClick,
   type = "button",
   className,
+  ...buttonProps
 }: ActionButtonProps) {
   const sharedClassName = cn(
     "inline-flex min-h-10 items-center justify-center gap-2 rounded-[18px] px-4 py-2.5 text-sm font-medium transition-all duration-150",
@@ -89,7 +95,12 @@ export function ActionButton({
   }
 
   return (
-    <button className={sharedClassName} onClick={onClick} type={type}>
+    <button
+      {...buttonProps}
+      className={sharedClassName}
+      onClick={onClick}
+      type={type}
+    >
       {children}
     </button>
   );
@@ -205,7 +216,10 @@ export function Field({
   );
 }
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
+export const Input = forwardRef(function Input(
+  props: InputHTMLAttributes<HTMLInputElement>,
+  ref: ForwardedRef<HTMLInputElement>,
+) {
   return (
     <input
       {...props}
@@ -213,11 +227,15 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
         "w-full rounded-[18px] border border-[var(--border)] bg-[rgba(255,255,255,0.8)] px-4 py-3 text-sm text-[var(--foreground)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(26,130,121,0.08)]",
         props.className,
       )}
+      ref={ref}
     />
   );
-}
+});
 
-export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
+export const Select = forwardRef(function Select(
+  props: SelectHTMLAttributes<HTMLSelectElement>,
+  ref: ForwardedRef<HTMLSelectElement>,
+) {
   const { style, ...restProps } = props;
 
   return (
@@ -227,6 +245,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
         "w-full appearance-none rounded-[18px] border border-[var(--border)] bg-[rgba(255,255,255,0.8)] px-4 py-3 pr-11 text-sm text-[var(--foreground)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] focus:border-[var(--accent)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(26,130,121,0.08)]",
         props.className,
       )}
+      ref={ref}
       style={{
         backgroundImage:
           "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2366737c' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
@@ -237,9 +256,12 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
       }}
     />
   );
-}
+});
 
-export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export const Textarea = forwardRef(function Textarea(
+  props: TextareaHTMLAttributes<HTMLTextAreaElement>,
+  ref: ForwardedRef<HTMLTextAreaElement>,
+) {
   return (
     <textarea
       {...props}
@@ -247,9 +269,10 @@ export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
         "min-h-28 w-full rounded-[18px] border border-[var(--border)] bg-[rgba(255,255,255,0.8)] px-4 py-3 text-sm text-[var(--foreground)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(26,130,121,0.08)]",
         props.className,
       )}
+      ref={ref}
     />
   );
-}
+});
 
 export function EmptyState({
   title,
@@ -287,20 +310,20 @@ export function QuickJumpTrigger({
   return (
     <button
       className={cn(
-        "inline-flex min-h-10 items-center justify-between gap-3 rounded-[18px] border border-[var(--border)] bg-[rgba(255,255,255,0.76)] px-4 py-2.5 text-left text-sm text-[var(--foreground)] shadow-[var(--shadow-sm)] hover:border-[var(--border-strong)] hover:bg-white",
+        "inline-flex min-h-10 items-center justify-between gap-3 rounded-[18px] border border-[var(--border)] bg-[rgba(255,255,255,0.76)] px-4 py-2.5 text-left text-[13px] text-[var(--foreground)] shadow-[var(--shadow-sm)] hover:border-[var(--border-strong)] hover:bg-white",
         className,
       )}
       onClick={onClick}
       type="button"
       {...props}
     >
-      <span className="flex min-w-0 items-center gap-2.5">
+      <span className="flex min-w-0 flex-1 items-center gap-2.5">
         <span className="flex size-8 items-center justify-center rounded-[14px] bg-[var(--accent-soft)] text-[var(--accent-strong)]">
           <Icon className="size-4" strokeWidth={2.1} />
         </span>
-        <span className="truncate">{label}</span>
+        <span className="truncate leading-5">{label}</span>
       </span>
-      <span className="hidden rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--muted)] sm:inline-flex">
+      <span className="hidden min-h-7 min-w-[3.4rem] items-center justify-center self-center rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 font-mono text-[10px] uppercase leading-none tracking-[0.16em] text-[var(--muted)] sm:inline-flex">
         {shortcut}
       </span>
     </button>

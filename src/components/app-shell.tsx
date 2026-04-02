@@ -242,7 +242,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           task.dueOn && task.dueOn <= today
             ? `Task • perlu perhatian sejak ${formatDate(task.dueOn)}`
             : task.todayPinned
-              ? "Task • dipin ke Today"
+              ? "Task • di-pin ke today"
               : "Task • reminder aktif hari ini",
         href: "/tasks",
         group: "attention" as const,
@@ -357,7 +357,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <QuickJumpTrigger
             className="mt-4 w-full"
-            label="Cari modul atau perhatian"
+            label="Cari modul atau fokus"
             onClick={openQuickJump}
           />
 
@@ -473,7 +473,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Input
                 autoFocus
                 onChange={(event) => setQuickJumpQuery(event.target.value)}
-                placeholder="Cari modul, task, hutang, belanja, atau wishlist"
+                placeholder="Cari modul atau item penting"
                 value={quickJumpQuery}
               />
               <button
@@ -512,7 +512,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4 text-xs text-[var(--muted)]">
-              <p>Lompat cepat ke modul atau item penting tanpa memenuhi layar utama.</p>
+              <p>Lompat cepat ke modul atau item penting.</p>
               <span className="rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 font-mono uppercase tracking-[0.16em]">
                 Ctrl K
               </span>

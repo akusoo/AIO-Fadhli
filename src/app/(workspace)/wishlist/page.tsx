@@ -42,10 +42,20 @@ const prioritySections: Array<{ id: Priority; title: string; description: string
 ];
 
 type WishDraft = {
+  imageUrl: string;
   name: string;
   targetPrice: string;
   priority: Priority;
   note: string;
+  sourceUrl: string;
+};
+
+type ResolvedWishLink = {
+  imageUrl?: string;
+  siteName?: string;
+  sourceUrl: string;
+  targetPrice?: number;
+  title?: string;
 };
 
 function priorityLabel(priority: Priority) {
@@ -104,10 +114,12 @@ function sortWishItems(left: WishItem, right: WishItem) {
 
 function createWishDraft(item?: WishItem): WishDraft {
   return {
+    imageUrl: item?.imageUrl ?? "",
     name: item?.name ?? "",
     targetPrice: item ? formatNumberInput(String(item.targetPrice)) : "",
     priority: item?.priority ?? "medium",
     note: item?.note ?? "",
+    sourceUrl: item?.sourceUrl ?? "",
   };
 }
 
@@ -117,9 +129,37 @@ function matchesQuery(item: WishItem, query: string) {
   }
 
   const normalized = query.toLowerCase();
-  return [item.name, item.note ?? ""].some((value) =>
+  return [item.name, item.note ?? "", item.sourceUrl ?? ""].some((value) =>
     value.toLowerCase().includes(normalized),
   );
+}
+
+function applyResolvedWishLink(draft: WishDraft, preview: ResolvedWishLink): WishDraft {
+  return {
+    ...draft,
+    name: preview.title ?? draft.name,
+    targetPrice: preview.targetPrice
+      ? formatNumberInput(String(preview.targetPrice))
+      : draft.targetPrice,
+    sourceUrl: preview.sourceUrl,
+    imageUrl: preview.imageUrl ?? draft.imageUrl,
+  };
+}
+
+function formatSourceLabel(sourceUrl?: string, siteName?: string) {
+  if (siteName) {
+    return siteName;
+  }
+
+  if (!sourceUrl) {
+    return undefined;
+  }
+
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./i, "");
+  } catch {
+    return undefined;
+  }
 }
 
 function CompactStat({
@@ -169,16 +209,18 @@ function InlineActionButton({
   onClick,
   type = "button",
   variant = "secondary",
+  disabled = false,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   type?: "button" | "submit";
   variant?: "primary" | "secondary" | "ghost";
+  disabled?: boolean;
 }) {
   return (
     <button
       className={cn(
-        "inline-flex min-h-10 items-center justify-center rounded-[16px] px-4 py-2 text-sm font-medium transition-all duration-150",
+        "inline-flex min-h-10 items-center justify-center rounded-[16px] px-4 py-2 text-sm font-medium transition-all duration-150 disabled:pointer-events-none disabled:opacity-60",
         variant === "primary" &&
           "bg-[var(--foreground)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-0.5 hover:bg-[var(--accent-strong)]",
         variant === "secondary" &&
@@ -186,6 +228,7 @@ function InlineActionButton({
         variant === "ghost" &&
           "text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] hover:text-[var(--foreground)]",
       )}
+      disabled={disabled}
       onClick={onClick}
       type={type}
     >
@@ -194,59 +237,184 @@ function InlineActionButton({
   );
 }
 
+function WishLinkPreviewCard({
+  imageUrl,
+  label,
+  sourceUrl,
+  targetPrice,
+  title,
+}: {
+  imageUrl?: string;
+  label?: string;
+  sourceUrl?: string;
+  targetPrice?: number;
+  title?: string;
+}) {
+  if (!imageUrl && !sourceUrl) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-[20px] border border-[var(--border)] bg-[rgba(255,255,255,0.72)] p-3 shadow-[var(--shadow-sm)]">
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            "h-20 w-20 shrink-0 rounded-[16px] border border-[var(--border)] bg-[var(--surface)] bg-cover bg-center",
+            !imageUrl && "bg-[linear-gradient(135deg,rgba(26,130,121,0.08),rgba(23,37,47,0.04))]",
+          )}
+          style={imageUrl ? { backgroundImage: `url("${imageUrl}")` } : undefined}
+        />
+        <div className="min-w-0 flex-1">
+          {label ? <Pill>{label}</Pill> : null}
+          {title ? (
+            <p className="mt-2 font-semibold text-[var(--foreground)] [overflow-wrap:anywhere]">
+              {title}
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--muted)]">Preview link siap dipakai.</p>
+          )}
+          {typeof targetPrice === "number" ? (
+            <p className="mt-1 text-sm font-medium text-[var(--foreground)]">
+              {formatCurrency(targetPrice)}
+            </p>
+          ) : null}
+          {sourceUrl ? (
+            <a
+              className="mt-2 inline-flex text-sm text-[var(--accent-strong)] hover:text-[var(--foreground)]"
+              href={sourceUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Buka sumber
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WishLinkFieldset({
+  draft,
+  isResolving,
+  onChange,
+  onResolve,
+}: {
+  draft: WishDraft;
+  isResolving: boolean;
+  onChange: (draft: WishDraft) => void;
+  onResolve: () => void;
+}) {
+  const previewPrice = draft.targetPrice ? parseNumberInput(draft.targetPrice) : undefined;
+
+  return (
+    <div className="space-y-4 rounded-[22px] border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <Field label="Link produk">
+          <Input
+            onChange={(event) => onChange({ ...draft, sourceUrl: event.target.value })}
+            placeholder="Tempel link produk untuk ambil data otomatis"
+            value={draft.sourceUrl}
+          />
+        </Field>
+        <div className="flex items-end">
+          <InlineActionButton
+            disabled={!draft.sourceUrl.trim() || isResolving}
+            onClick={onResolve}
+          >
+            {isResolving ? "Mengambil..." : "Ambil dari link"}
+          </InlineActionButton>
+        </div>
+      </div>
+
+      {(draft.imageUrl || draft.sourceUrl) ? (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <Field label="Link gambar">
+            <Input
+              onChange={(event) => onChange({ ...draft, imageUrl: event.target.value })}
+              placeholder="Opsional, bisa diisi manual"
+              value={draft.imageUrl}
+            />
+          </Field>
+          <WishLinkPreviewCard
+            imageUrl={draft.imageUrl || undefined}
+            label={formatSourceLabel(draft.sourceUrl)}
+            sourceUrl={draft.sourceUrl || undefined}
+            targetPrice={previewPrice}
+            title={draft.name || undefined}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function WishEditor({
   draft,
+  isResolvingLink,
   onChange,
   onCancel,
+  onResolveLink,
   onSubmit,
 }: {
   draft: WishDraft;
+  isResolvingLink: boolean;
   onChange: (draft: WishDraft) => void;
   onCancel: () => void;
+  onResolveLink: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
     <form className="border-t border-[var(--border)] bg-[var(--surface)] px-4 py-4 md:px-5" onSubmit={onSubmit}>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Nama item">
-          <Input
-            onChange={(event) => onChange({ ...draft, name: event.target.value })}
-            required
-            value={draft.name}
-          />
-        </Field>
-        <Field label="Target harga">
-          <Input
-            inputMode="numeric"
-            onChange={(event) =>
-              onChange({
-                ...draft,
-                targetPrice: formatNumberInput(event.target.value),
-              })
-            }
-            required
-            value={draft.targetPrice}
-          />
-        </Field>
-        <Field label="Prioritas">
-          <Select
-            onChange={(event) =>
-              onChange({ ...draft, priority: event.target.value as Priority })
-            }
-            value={draft.priority}
-          >
-            <option value="high">high</option>
-            <option value="medium">medium</option>
-            <option value="low">low</option>
-          </Select>
-        </Field>
-        <Field label="Catatan">
-          <Input
-            onChange={(event) => onChange({ ...draft, note: event.target.value })}
-            placeholder="Catatan singkat"
-            value={draft.note}
-          />
-        </Field>
+      <div className="space-y-4">
+        <WishLinkFieldset
+          draft={draft}
+          isResolving={isResolvingLink}
+          onChange={onChange}
+          onResolve={onResolveLink}
+        />
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Nama item">
+            <Input
+              onChange={(event) => onChange({ ...draft, name: event.target.value })}
+              required
+              value={draft.name}
+            />
+          </Field>
+          <Field label="Target harga">
+            <Input
+              inputMode="numeric"
+              onChange={(event) =>
+                onChange({
+                  ...draft,
+                  targetPrice: formatNumberInput(event.target.value),
+                })
+              }
+              required
+              value={draft.targetPrice}
+            />
+          </Field>
+          <Field label="Prioritas">
+            <Select
+              onChange={(event) =>
+                onChange({ ...draft, priority: event.target.value as Priority })
+              }
+              value={draft.priority}
+            >
+              <option value="high">high</option>
+              <option value="medium">medium</option>
+              <option value="low">low</option>
+            </Select>
+          </Field>
+          <Field label="Catatan">
+            <Input
+              onChange={(event) => onChange({ ...draft, note: event.target.value })}
+              placeholder="Catatan singkat"
+              value={draft.note}
+            />
+          </Field>
+        </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
         <InlineActionButton type="submit" variant="primary">
@@ -262,10 +430,12 @@ function WishlistRow({
   item,
   shoppingStatus,
   isEditing,
+  isResolvingEditLink,
   editDraft,
   onDraftChange,
   onEditToggle,
   onEditCancel,
+  onResolveEditLink,
   onEditSubmit,
   onDelete,
   onMarkReady,
@@ -276,10 +446,12 @@ function WishlistRow({
   item: WishItem;
   shoppingStatus?: "planned" | "buying" | "bought";
   isEditing: boolean;
+  isResolvingEditLink: boolean;
   editDraft: WishDraft;
   onDraftChange: (draft: WishDraft) => void;
   onEditToggle: () => void;
   onEditCancel: () => void;
+  onResolveEditLink: () => void;
   onEditSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDelete: () => void;
   onMarkReady: () => void;
@@ -288,22 +460,43 @@ function WishlistRow({
   archive?: boolean;
 }) {
   return (
-    <div>
+    <div data-testid={`wishlist-row-${item.id}`}>
       <div className="flex flex-col gap-4 px-4 py-4 md:px-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-base font-semibold text-[var(--foreground)]">{item.name}</p>
-              <Pill tone={wishStatusTone(item.status)}>{wishStatusLabel(item.status)}</Pill>
-              {archive && shoppingStatus ? <Pill>{shoppingStatusLabel(shoppingStatus)}</Pill> : null}
+          <div className="flex min-w-0 gap-4">
+            {item.imageUrl ? (
+              <div
+                className="h-20 w-20 shrink-0 rounded-[18px] border border-[var(--border)] bg-cover bg-center"
+                style={{ backgroundImage: `url("${item.imageUrl}")` }}
+              />
+            ) : null}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-base font-semibold text-[var(--foreground)] [overflow-wrap:anywhere]">
+                  {item.name}
+                </p>
+                <Pill tone={wishStatusTone(item.status)}>{wishStatusLabel(item.status)}</Pill>
+                {archive && shoppingStatus ? <Pill>{shoppingStatusLabel(shoppingStatus)}</Pill> : null}
+                {item.sourceUrl ? <Pill>{formatSourceLabel(item.sourceUrl)}</Pill> : null}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                {item.note
+                  ? item.note
+                  : archive
+                    ? "Jejak perpindahan ke shopping disimpan di sini."
+                    : "Belum ada catatan tambahan."}
+              </p>
+              {item.sourceUrl ? (
+                <a
+                  className="mt-2 inline-flex text-sm text-[var(--accent-strong)] hover:text-[var(--foreground)]"
+                  href={item.sourceUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Buka sumber
+                </a>
+              ) : null}
             </div>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-              {item.note
-                ? item.note
-                : archive
-                  ? "Jejak perpindahan ke shopping disimpan di sini."
-                  : "Belum ada catatan tambahan."}
-            </p>
           </div>
 
           <div className="shrink-0 text-left lg:text-right">
@@ -353,8 +546,10 @@ function WishlistRow({
       {isEditing ? (
         <WishEditor
           draft={editDraft}
+          isResolvingLink={isResolvingEditLink}
           onCancel={onEditCancel}
           onChange={onDraftChange}
+          onResolveLink={onResolveEditLink}
           onSubmit={onEditSubmit}
         />
       ) : null}
@@ -378,6 +573,8 @@ export default function WishlistPage() {
   const [readyOnly, setReadyOnly] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [editDraft, setEditDraft] = useState<WishDraft>(createWishDraft());
+  const [isResolvingQuickLink, setIsResolvingQuickLink] = useState(false);
+  const [isResolvingEditLink, setIsResolvingEditLink] = useState(false);
 
   const filteredActiveItems = useMemo(
     () =>
@@ -425,6 +622,77 @@ export default function WishlistPage() {
     [filteredActiveItems],
   );
 
+  async function fetchResolvedWishLink(sourceUrl: string) {
+    const response = await fetch("/api/wishlist/resolve-link", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: sourceUrl }),
+    });
+
+    if (response.status === 401) {
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth/sign-in";
+      }
+
+      throw new Error("Unauthorized");
+    }
+
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string; item?: ResolvedWishLink }
+      | null;
+
+    if (!response.ok || !payload?.item) {
+      throw new Error(payload?.error ?? "Gagal mengambil data dari link.");
+    }
+
+    return payload.item;
+  }
+
+  async function handleResolveQuickLink() {
+    if (!quickDraft.sourceUrl.trim()) {
+      setFeedback("Isi link produk dulu.");
+      return;
+    }
+
+    setIsResolvingQuickLink(true);
+
+    try {
+      const preview = await fetchResolvedWishLink(quickDraft.sourceUrl.trim());
+      setQuickDraft((current) => applyResolvedWishLink(current, preview));
+      setFeedback(
+        preview.title || preview.targetPrice || preview.imageUrl
+          ? "Data produk berhasil diambil dari link."
+          : "Link berhasil dibaca. Lengkapi detail yang belum terisi.",
+      );
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Gagal mengambil data dari link.");
+    } finally {
+      setIsResolvingQuickLink(false);
+    }
+  }
+
+  async function handleResolveEditLink() {
+    if (!editDraft.sourceUrl.trim()) {
+      setFeedback("Isi link produk dulu.");
+      return;
+    }
+
+    setIsResolvingEditLink(true);
+
+    try {
+      const preview = await fetchResolvedWishLink(editDraft.sourceUrl.trim());
+      setEditDraft((current) => applyResolvedWishLink(current, preview));
+      setFeedback("Data produk berhasil diperbarui dari link.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Gagal mengambil data dari link.");
+    } finally {
+      setIsResolvingEditLink(false);
+    }
+  }
+
   async function handleCreateWish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -440,6 +708,8 @@ export default function WishlistPage() {
       targetPrice: nextTargetPrice,
       priority: quickDraft.priority,
       note: quickDraft.note.trim() || undefined,
+      sourceUrl: quickDraft.sourceUrl.trim() || undefined,
+      imageUrl: quickDraft.imageUrl.trim() || undefined,
     });
 
     setQuickDraft(createWishDraft());
@@ -448,6 +718,7 @@ export default function WishlistPage() {
   }
 
   function startEditing(item: WishItem) {
+    setIsResolvingEditLink(false);
     setEditingId(item.id);
     setEditDraft(createWishDraft(item));
   }
@@ -468,8 +739,11 @@ export default function WishlistPage() {
       targetPrice: nextTargetPrice,
       priority: editDraft.priority,
       note: editDraft.note.trim() || undefined,
+      sourceUrl: editDraft.sourceUrl.trim() || undefined,
+      imageUrl: editDraft.imageUrl.trim() || undefined,
     });
 
+    setIsResolvingEditLink(false);
     setEditingId("");
     setFeedback(`"${editDraft.name.trim()}" berhasil diperbarui.`);
   }
@@ -478,6 +752,7 @@ export default function WishlistPage() {
     await deleteWish(item.id);
 
     if (editingId === item.id) {
+      setIsResolvingEditLink(false);
       setEditingId("");
     }
 
@@ -501,6 +776,7 @@ export default function WishlistPage() {
     await moveWishToShopping(item.id);
 
     if (editingId === item.id) {
+      setIsResolvingEditLink(false);
       setEditingId("");
     }
 
@@ -528,52 +804,63 @@ export default function WishlistPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Quick add" description="Tambah item baru dengan cepat. Catatan hanya dibuka saat memang perlu.">
-        <form className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_220px_180px_auto]" onSubmit={handleCreateWish}>
-          <Field label="Nama item">
-            <Input
-              onChange={(event) =>
-                setQuickDraft((current) => ({ ...current, name: event.target.value }))
-              }
-              placeholder="Contoh: Mechanical keyboard"
-              required
-              value={quickDraft.name}
-            />
-          </Field>
-          <Field label="Target harga">
-            <Input
-              inputMode="numeric"
-              onChange={(event) =>
-                setQuickDraft((current) => ({
-                  ...current,
-                  targetPrice: formatNumberInput(event.target.value),
-                }))
-              }
-              placeholder="Contoh: 450.000"
-              required
-              value={quickDraft.targetPrice}
-            />
-          </Field>
-          <Field label="Prioritas">
-            <Select
-              onChange={(event) =>
-                setQuickDraft((current) => ({
-                  ...current,
-                  priority: event.target.value as Priority,
-                }))
-              }
-              value={quickDraft.priority}
-            >
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
-            </Select>
-          </Field>
-          <div className="flex items-end gap-3">
-            <InlineActionButton type="submit" variant="primary">
-              <Sparkles className="mr-2 size-4" strokeWidth={2.2} />
-              Simpan wish
-            </InlineActionButton>
+      <SectionCard title="Quick add" description="Tambah item baru dengan cepat, atau tempel link produk untuk mengisi data otomatis.">
+        <form className="space-y-4" onSubmit={handleCreateWish}>
+          <WishLinkFieldset
+            draft={quickDraft}
+            isResolving={isResolvingQuickLink}
+            onChange={setQuickDraft}
+            onResolve={() => {
+              void handleResolveQuickLink();
+            }}
+          />
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_220px_180px_auto]">
+            <Field label="Nama item">
+              <Input
+                onChange={(event) =>
+                  setQuickDraft((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="Contoh: Mechanical keyboard"
+                required
+                value={quickDraft.name}
+              />
+            </Field>
+            <Field label="Target harga">
+              <Input
+                inputMode="numeric"
+                onChange={(event) =>
+                  setQuickDraft((current) => ({
+                    ...current,
+                    targetPrice: formatNumberInput(event.target.value),
+                  }))
+                }
+                placeholder="Contoh: 450.000"
+                required
+                value={quickDraft.targetPrice}
+              />
+            </Field>
+            <Field label="Prioritas">
+              <Select
+                onChange={(event) =>
+                  setQuickDraft((current) => ({
+                    ...current,
+                    priority: event.target.value as Priority,
+                  }))
+                }
+                value={quickDraft.priority}
+              >
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+                <option value="low">low</option>
+              </Select>
+            </Field>
+            <div className="flex items-end gap-3">
+              <InlineActionButton type="submit" variant="primary">
+                <Sparkles className="mr-2 size-4" strokeWidth={2.2} />
+                Simpan wish
+              </InlineActionButton>
+            </div>
           </div>
         </form>
 
@@ -653,19 +940,25 @@ export default function WishlistPage() {
                         <WishlistRow
                           editDraft={editingId === item.id ? editDraft : createWishDraft(item)}
                           isEditing={editingId === item.id}
+                          isResolvingEditLink={editingId === item.id ? isResolvingEditLink : false}
                           item={item}
                           onDelete={() => {
                             void handleDeleteWish(item);
                           }}
                           onDraftChange={setEditDraft}
                           onEditCancel={() => {
+                            setIsResolvingEditLink(false);
                             setEditingId("");
+                          }}
+                          onResolveEditLink={() => {
+                            void handleResolveEditLink();
                           }}
                           onEditSubmit={(event) => {
                             void handleUpdateWish(event, item);
                           }}
                           onEditToggle={() => {
                             if (editingId === item.id) {
+                              setIsResolvingEditLink(false);
                               setEditingId("");
                               return;
                             }
@@ -711,10 +1004,12 @@ export default function WishlistPage() {
                   archive
                   editDraft={createWishDraft(item)}
                   isEditing={false}
+                  isResolvingEditLink={false}
                   item={item}
                   onDelete={() => undefined}
                   onDraftChange={() => undefined}
                   onEditCancel={() => undefined}
+                  onResolveEditLink={() => undefined}
                   onEditSubmit={() => undefined}
                   onEditToggle={() => undefined}
                   onMarkReady={() => undefined}

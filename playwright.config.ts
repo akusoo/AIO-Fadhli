@@ -42,11 +42,15 @@ function loadLocalEnvFile(filename: string) {
   }
 }
 
+loadLocalEnvFile(".env.test.local");
+loadLocalEnvFile(".env.test");
 loadLocalEnvFile(".env.local");
 loadLocalEnvFile(".env");
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? process.env.PORT ?? 3100);
-const baseURL = `http://localhost:${port}`;
+const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
+const baseURL = externalBaseURL ?? `http://localhost:${port}`;
+const useExternalBaseURL = Boolean(externalBaseURL);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -56,7 +60,7 @@ export default defineConfig({
   },
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 2 : 0,
+  retries: Number(process.env.PLAYWRIGHT_RETRIES ?? (process.env.CI ? 2 : 0)),
   reporter: process.env.CI ? [["html"], ["list"]] : "list",
   use: {
     baseURL,
@@ -64,16 +68,18 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  webServer: {
-    command: `pnpm exec next build && pnpm exec next start --port ${port}`,
-    url: `${baseURL}/auth/sign-in`,
-    reuseExistingServer: false,
-    timeout: 240_000,
-    env: {
-      ...process.env,
-      ENABLE_E2E_TEST_ROUTES: "true",
-    },
-  },
+  webServer: useExternalBaseURL
+    ? undefined
+    : {
+        command: `pnpm exec next build && pnpm exec next start --port ${port}`,
+        url: `${baseURL}/auth/sign-in`,
+        reuseExistingServer: false,
+        timeout: 240_000,
+        env: {
+          ...process.env,
+          ENABLE_E2E_TEST_ROUTES: "true",
+        },
+      },
   projects: [
     {
       name: "setup",

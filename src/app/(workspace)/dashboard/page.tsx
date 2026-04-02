@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { ArrowRight, Clock3, ShoppingCart, Sparkles, Wallet } from "lucide-react";
 import {
   ActionButton,
@@ -103,7 +110,7 @@ function taskDetail(task: Task) {
   }
 
   if (isTaskPinnedToday(task)) {
-    return `Task ${task.projectId ? "project" : "pribadi"} • dipin ke Today`;
+    return `Task ${task.projectId ? "project" : "pribadi"} • di-pin ke today`;
   }
 
   if (isTaskReminderToday(task)) {
@@ -394,19 +401,22 @@ function InlineActionButton({
   children,
   onClick,
   variant = "secondary",
+  disabled = false,
 }: {
   children: ReactNode;
   onClick: () => void;
   variant?: "primary" | "secondary";
+  disabled?: boolean;
 }) {
   return (
     <button
       className={cn(
-        "inline-flex min-h-10 items-center justify-center rounded-[16px] px-4 py-2 text-sm font-medium transition-all duration-150",
+        "inline-flex min-h-10 items-center justify-center rounded-[16px] px-4 py-2 text-sm font-medium transition-all duration-150 disabled:pointer-events-none disabled:opacity-60",
         variant === "primary"
           ? "bg-[var(--foreground)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-0.5 hover:bg-[var(--accent-strong)]"
           : "border border-[var(--border)] bg-[rgba(255,255,255,0.76)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-white",
       )}
+      disabled={disabled}
       onClick={onClick}
       type="button"
     >
@@ -434,20 +444,95 @@ export default function DashboardPage() {
   const [kind, setKind] = useState<"income" | "expense">("expense");
   const [accountId, setAccountId] = useState(snapshot.accounts[0]?.id ?? "");
   const [feedback, setFeedback] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; title?: string }>({});
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [taskCelebration, setTaskCelebration] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const celebrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!accountId && snapshot.accounts[0]?.id) {
+      setAccountId(snapshot.accounts[0].id);
+    }
+  }, [accountId, snapshot.accounts]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+
+      if (celebrationTimeoutRef.current) {
+        clearTimeout(celebrationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function showFeedback(message: string) {
+    setFeedback(message);
+
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+    }
+
+    feedbackTimeoutRef.current = setTimeout(() => {
+      setFeedback("");
+    }, 2400);
+  }
+
+  function celebrateTask(title: string) {
+    setTaskCelebration(title);
+
+    if (celebrationTimeoutRef.current) {
+      clearTimeout(celebrationTimeoutRef.current);
+    }
+
+    celebrationTimeoutRef.current = setTimeout(() => {
+      setTaskCelebration("");
+    }, 1800);
+  }
 
   async function handleQuickTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nextErrors: { amount?: string; title?: string } = {};
+    const trimmedTitle = title.trim();
+    const parsedAmount = parseNumberInput(amount);
 
-    const categoryId = snapshot.categories.find((category) => category.kind === kind)?.id;
+    if (!trimmedTitle) {
+      nextErrors.title = "Isi judul transaksi dulu.";
+    }
 
-    if (!categoryId) {
+    if (parsedAmount <= 0) {
+      nextErrors.amount = "Isi nominal dulu.";
+    }
+
+    if (nextErrors.title || nextErrors.amount) {
+      setFieldErrors(nextErrors);
+
+      if (nextErrors.title) {
+        titleInputRef.current?.focus();
+      } else {
+        amountInputRef.current?.focus();
+      }
+
       return;
     }
 
+    const categoryId = snapshot.categories.find((category) => category.kind === kind)?.id;
+
+    if (!categoryId || !accountId) {
+      showFeedback("Kategori atau akun belum siap.");
+      return;
+    }
+
+    setFieldErrors({});
+
     await addTransaction({
-      title,
+      title: trimmedTitle,
       kind,
-      amount: parseNumberInput(amount),
+      amount: parsedAmount,
       occurredOn: isoToday(),
       accountId,
       categoryId,
@@ -456,44 +541,51 @@ export default function DashboardPage() {
 
     setTitle("");
     setAmount("");
-    setFeedback(
+    showFeedback(
       kind === "income"
-        ? "Pemasukan cepat tersimpan."
-        : "Pengeluaran cepat tersimpan.",
+        ? "Pemasukan tersimpan."
+        : "Pengeluaran tersimpan.",
     );
   }
 
   async function handleAttentionAction(item: DashboardAttentionItem) {
-    if (item.actionKind === "task_done" && item.taskId) {
-      await moveTask(item.taskId, "done");
-      return;
-    }
+    setActioningId(item.id);
 
-    if (item.actionKind === "debt_paid" && item.debtId && item.installmentId) {
-      await setDebtInstallmentStatus({
-        debtId: item.debtId,
-        installmentId: item.installmentId,
-        status: "paid",
-        paidOn: isoToday(),
-      });
-      return;
-    }
+    try {
+      if (item.actionKind === "task_done" && item.taskId) {
+        await moveTask(item.taskId, "done");
+        celebrateTask(item.title);
+        return;
+      }
 
-    if (item.actionKind === "shopping_bought" && item.shoppingItemId) {
-      await setShoppingStatus({
-        itemId: item.shoppingItemId,
-        status: "bought",
-      });
-      return;
-    }
+      if (item.actionKind === "debt_paid" && item.debtId && item.installmentId) {
+        await setDebtInstallmentStatus({
+          debtId: item.debtId,
+          installmentId: item.installmentId,
+          status: "paid",
+          paidOn: isoToday(),
+        });
+        return;
+      }
 
-    if (item.actionKind === "shopping_record" && item.shoppingItemId) {
-      await recordShoppingPurchase(item.shoppingItemId);
-      return;
-    }
+      if (item.actionKind === "shopping_bought" && item.shoppingItemId) {
+        await setShoppingStatus({
+          itemId: item.shoppingItemId,
+          status: "bought",
+        });
+        return;
+      }
 
-    if (item.actionKind === "wish_move" && item.wishId) {
-      await moveWishToShopping(item.wishId);
+      if (item.actionKind === "shopping_record" && item.shoppingItemId) {
+        await recordShoppingPurchase(item.shoppingItemId);
+        return;
+      }
+
+      if (item.actionKind === "wish_move" && item.wishId) {
+        await moveWishToShopping(item.wishId);
+      }
+    } finally {
+      setActioningId((current) => (current === item.id ? null : current));
     }
   }
 
@@ -505,12 +597,12 @@ export default function DashboardPage() {
     <div className="space-y-5">
       <PageHeader
         eyebrow="Core flow / dashboard"
-        title="Halaman masuk yang ringkas untuk melihat apa yang perlu perhatian."
-        description="Fokus ke kondisi keuangan sekarang, transaksi cepat, dan item lintas modul yang paling layak ditangani hari ini."
+        title="Dashboard yang ringkas dan tenang."
+        description="Lihat keuangan, catat transaksi, dan tangani yang penting hari ini."
       />
 
       <SectionCard
-        description="Saldo, siklus aktif, dan catat transaksi cepat tanpa membuka halaman finance penuh."
+        description="Saldo, siklus aktif, dan catat transaksi tanpa pindah halaman."
         title="Keuangan cepat"
       >
         <div className="grid gap-5 xl:grid-cols-[0.88fr_1.12fr]">
@@ -554,14 +646,31 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <form className="grid gap-4" onSubmit={handleQuickTransaction}>
+          <form className="grid gap-4" noValidate onSubmit={handleQuickTransaction}>
             <Field label="Judul transaksi">
-              <Input
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Contoh: jajan, ongkir, uang masuk"
-                required
-                value={title}
-              />
+              <div className="space-y-2">
+                <Input
+                  className={
+                    fieldErrors.title
+                      ? "border-[var(--rose)] focus:border-[var(--rose)] focus:shadow-[0_0_0_4px_rgba(163,71,85,0.1)]"
+                      : ""
+                  }
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setTitle(nextValue);
+
+                    if (fieldErrors.title && nextValue.trim()) {
+                      setFieldErrors((current) => ({ ...current, title: undefined }));
+                    }
+                  }}
+                  placeholder="Contoh: jajan, ongkir, uang masuk"
+                  ref={titleInputRef}
+                  value={title}
+                />
+                {fieldErrors.title ? (
+                  <p className="text-xs text-[var(--rose)]">{fieldErrors.title}</p>
+                ) : null}
+              </div>
             </Field>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Jenis">
@@ -574,19 +683,36 @@ export default function DashboardPage() {
                 </Select>
               </Field>
               <Field label="Nominal">
-                <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
-                    Rp
-                  </span>
-                  <Input
-                    className="pl-11"
-                    inputMode="numeric"
-                    onChange={(event) => setAmount(event.target.value.replace(/\D/g, ""))}
-                    placeholder="0"
-                    required
-                    type="text"
-                    value={formatNumberInput(amount)}
-                  />
+                <div className="space-y-2">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
+                      Rp
+                    </span>
+                    <Input
+                      className={cn(
+                        "pl-11",
+                        fieldErrors.amount
+                          ? "border-[var(--rose)] focus:border-[var(--rose)] focus:shadow-[0_0_0_4px_rgba(163,71,85,0.1)]"
+                          : "",
+                      )}
+                      inputMode="numeric"
+                      onChange={(event) => {
+                        const nextValue = event.target.value.replace(/\D/g, "");
+                        setAmount(nextValue);
+
+                        if (fieldErrors.amount && parseNumberInput(nextValue) > 0) {
+                          setFieldErrors((current) => ({ ...current, amount: undefined }));
+                        }
+                      }}
+                      placeholder="0"
+                      ref={amountInputRef}
+                      type="text"
+                      value={formatNumberInput(amount)}
+                    />
+                  </div>
+                  {fieldErrors.amount ? (
+                    <p className="text-xs text-[var(--rose)]">{fieldErrors.amount}</p>
+                  ) : null}
                 </div>
               </Field>
               <Field label="Akun">
@@ -603,31 +729,39 @@ export default function DashboardPage() {
               </Field>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <ActionButton type="submit">Simpan cepat</ActionButton>
+              <ActionButton
+                className="bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-[0_16px_34px_rgba(26,130,121,0.18)] hover:-translate-y-0.5 hover:bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] hover:brightness-[1.03]"
+                type="submit"
+              >
+                Simpan cepat
+              </ActionButton>
               <ActionButton href="/finance" variant="secondary">
                 Form lengkap
               </ActionButton>
+              {feedback ? (
+                <span className="inline-flex min-h-10 items-center rounded-[16px] border border-[rgba(26,130,121,0.18)] bg-[rgba(236,248,245,0.92)] px-3.5 py-2 text-sm text-[var(--accent-strong)] animate-[pulse_0.7s_ease-out_1]">
+                  {feedback}
+                </span>
+              ) : null}
             </div>
-            {feedback ? (
-              <p className="rounded-2xl bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
-                {feedback}
-              </p>
-            ) : null}
           </form>
         </div>
       </SectionCard>
 
       <SectionCard
-        description="Prioritas lintas modul yang paling layak ditangani dulu."
+        description="Item lintas modul yang perlu Anda lihat hari ini."
         title="Butuh perhatian hari ini"
       >
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <Pill tone={attentionItems.length ? "mint" : "neutral"}>
-            {attentionItems.length} item ditampilkan
+            {attentionItems.length} item
           </Pill>
-          <p className="text-sm text-[var(--muted)]">
-            Maksimal 8 item agar dashboard tetap mudah discan.
-          </p>
+          {taskCelebration ? (
+            <p className="inline-flex items-center gap-2 rounded-full border border-[rgba(26,130,121,0.18)] bg-[rgba(236,248,245,0.92)] px-3.5 py-2 text-sm text-[var(--accent-strong)] animate-[pulse_0.8s_ease-out_1]">
+              <Sparkles className="size-4" strokeWidth={2.1} />
+              <span className="min-w-0 [overflow-wrap:anywhere]">{taskCelebration} selesai.</span>
+            </p>
+          ) : null}
         </div>
 
         {attentionItems.length ? (
@@ -647,16 +781,18 @@ export default function DashboardPage() {
                     {rowIcon(item.module)}
                   </span>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-start gap-2">
                       <Pill tone={item.tone}>{moduleLabel(item.module)}</Pill>
                       <Link
-                        className="font-semibold text-[var(--foreground)] hover:text-[var(--accent-strong)]"
+                        className="min-w-0 font-semibold text-[var(--foreground)] hover:text-[var(--accent-strong)] [overflow-wrap:anywhere]"
                         href={item.href}
                       >
                         {item.title}
                       </Link>
                     </div>
-                    <p className="mt-2 text-sm text-[var(--muted)]">{item.detail}</p>
+                    <p className="mt-2 text-sm text-[var(--muted)] [overflow-wrap:anywhere]">
+                      {item.detail}
+                    </p>
                   </div>
                 </div>
 
@@ -666,12 +802,13 @@ export default function DashboardPage() {
                     <p className="mt-1 text-xs text-[var(--muted)]">{item.metaLabel}</p>
                   </div>
                   <InlineActionButton
+                    disabled={actioningId === item.id}
                     onClick={() => {
                       void handleAttentionAction(item);
                     }}
                     variant={item.actionKind === "shopping_record" ? "primary" : "secondary"}
                   >
-                    {item.actionLabel}
+                    {actioningId === item.id ? "Memproses..." : item.actionLabel}
                   </InlineActionButton>
                 </div>
               </div>
@@ -680,13 +817,13 @@ export default function DashboardPage() {
         ) : (
           <EmptyState
             title="Tidak ada item mendesak hari ini."
-            description="Dashboard akan menampilkan task, cicilan, wishlist siap beli, dan belanja aktif saat ada yang perlu ditangani."
+            description="Saat ada hal penting lintas modul, item-nya akan muncul di sini."
           />
         )}
       </SectionCard>
 
       <SectionCard
-        description="Jalan cepat ke halaman kerja masing-masing tanpa menambah panel yang berat."
+        description="Buka modul kerja utama dari sini."
         title="Shortcut modul"
       >
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

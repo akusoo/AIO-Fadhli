@@ -283,11 +283,13 @@ function TaskCard({
   onTogglePin: () => void;
 }) {
   return (
-    <div className="py-4">
+    <div className="py-4" data-testid={`task-card-${task.id}`}>
       <div className="flex items-start justify-between gap-3">
         <button className="min-w-0 flex-1 text-left" onClick={onOpen} type="button">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold">{task.title}</p>
+          <div className="flex flex-wrap items-start gap-2">
+            <p className="min-w-0 max-w-full font-semibold [overflow-wrap:anywhere]">
+              {task.title}
+            </p>
             <Pill tone={priorityTone(task.priority)}>{task.priority}</Pill>
             <Pill tone={statusTone(task.status)}>{statusLabel(task.status)}</Pill>
             {task.todayPinned ? <Pill tone="mint">pinned</Pill> : null}
@@ -316,7 +318,7 @@ function TaskCard({
             type="button"
           >
             <Pin className="size-3.5" strokeWidth={2.2} />
-            {task.todayPinned ? "Lepas Today" : "Pin Today"}
+            {task.todayPinned ? "Lepas today" : "Pin ke today"}
           </button>
         </div>
       </div>
@@ -765,7 +767,7 @@ export default function TasksPage() {
           }}
           variant="secondary"
         >
-          {selectedTask.todayPinned ? "Lepas dari Today" : "Pin ke Today"}
+          {selectedTask.todayPinned ? "Lepas dari today" : "Pin ke today"}
         </ActionButton>
         <ActionButton
           onClick={() => {
@@ -870,11 +872,14 @@ export default function TasksPage() {
           <form className="mt-4 flex flex-wrap gap-3" onSubmit={handleQuickCapture}>
             <Input
               className="min-w-[220px] flex-1"
+              data-testid="quick-task-input-mobile"
               onChange={(event) => setQuickTitle(event.target.value)}
               placeholder="Tulis task cepat lalu rapikan nanti"
               value={quickTitle}
             />
-            <ActionButton type="submit">Tambah cepat</ActionButton>
+            <ActionButton data-testid="quick-task-submit-mobile" type="submit">
+              Tambah cepat
+            </ActionButton>
           </form>
         </SectionCard>
       </div>
@@ -902,11 +907,14 @@ export default function TasksPage() {
               <p className="text-sm font-semibold">Quick capture</p>
               <form className="mt-4 space-y-3" onSubmit={handleQuickCapture}>
                 <Input
+                  data-testid="quick-task-input-desktop"
                   onChange={(event) => setQuickTitle(event.target.value)}
                   placeholder="Contoh: follow up feedback hero"
                   value={quickTitle}
                 />
-                <ActionButton type="submit">Tambah task</ActionButton>
+                <ActionButton data-testid="quick-task-submit-desktop" type="submit">
+                  Tambah task
+                </ActionButton>
               </form>
             </div>
 
@@ -1010,13 +1018,13 @@ export default function TasksPage() {
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2">
-                    <Pill tone="amber">Pinned for today</Pill>
-                    <p className="text-sm text-[var(--muted)]">Dipin manual ke Today.</p>
+                    <Pill tone="amber">Pin ke today</Pill>
+                    <p className="text-sm text-[var(--muted)]">Di-pin manual ke today.</p>
                   </div>
                   {renderTaskList(
                     pinnedTodayTasks,
                     "Belum ada task pinned",
-                    "Pin task penting ke Today kalau kamu ingin memaksanya masuk fokus harian.",
+                    "Pin task penting ke today kalau ingin membawanya ke fokus harian.",
                   )}
                 </div>
 

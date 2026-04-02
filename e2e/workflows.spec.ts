@@ -11,7 +11,26 @@ test.describe("core workflows", () => {
     await resetTestData(page);
   });
 
-  test("project, task, dan note utama bisa dibuat dan dipakai lintas halaman", async ({ page }) => {
+  test("@smoke @regression quick capture task bisa dibuat lalu ditandai selesai", async ({ page }) => {
+    const taskTitle = uniqueLabel("Quick Task");
+
+    await gotoAndAssert(page, "/tasks", /Task sekarang jadi execution hub yang fokus ke Today/i);
+
+    await page.getByTestId("quick-task-input-desktop").fill(taskTitle);
+    await page.getByTestId("quick-task-submit-desktop").click();
+    await page.getByRole("button", { name: /All tasks/i }).click();
+    await page.getByPlaceholder("Cari task, project, atau catatan").fill(taskTitle);
+
+    const taskCard = page.getByTestId(/task-card-/).filter({ hasText: taskTitle }).first();
+    await expect(taskCard).toBeVisible();
+    await taskCard.getByRole("button", { name: /^Selesai$/ }).click();
+
+    await page.getByRole("button", { name: /Done/i }).click();
+    await page.getByPlaceholder("Cari task, project, atau catatan").fill(taskTitle);
+    await expect(page.getByTestId(/task-card-/).filter({ hasText: taskTitle }).first()).toBeVisible();
+  });
+
+  test("@regression project, task, dan note utama bisa dibuat dan dipakai lintas halaman", async ({ page }) => {
     const projectName = uniqueLabel("E2E Project");
     const taskTitle = uniqueLabel("E2E Task");
     const noteTitle = uniqueLabel("E2E Note");
@@ -52,7 +71,7 @@ test.describe("core workflows", () => {
     await page.getByRole("button", { name: /All tasks/i }).click();
     await page.getByPlaceholder("Cari task, project, atau catatan").fill(taskTitle);
 
-    const taskCard = page.locator("div.py-4").filter({ has: page.getByText(taskTitle) }).first();
+    const taskCard = page.getByTestId(/task-card-/).filter({ hasText: taskTitle }).first();
     await expect(taskCard).toBeVisible();
     await taskCard.getByRole("button", { name: /^Selesai$/ }).click();
 
@@ -61,7 +80,7 @@ test.describe("core workflows", () => {
     await expect(page.locator("p.mt-3.text-lg", { hasText: taskTitle })).toBeVisible();
   });
 
-  test("wishlist bisa naik ke shopping lalu dicatat ke finance", async ({ page }) => {
+  test("@smoke @regression wishlist bisa naik ke shopping lalu dicatat ke finance", async ({ page }) => {
     const wishName = uniqueLabel("E2E Wish");
 
     await gotoAndAssert(
@@ -75,19 +94,15 @@ test.describe("core workflows", () => {
     await page.getByLabel("Prioritas").selectOption("high");
     await page.getByRole("button", { name: "Simpan wish" }).click();
 
-    const wishlistRow = page.locator("div").filter({
+    const wishlistRow = page.getByTestId(/wishlist-row-/).filter({
       has: page.getByText(wishName),
-    }).filter({
-      has: page.getByRole("button", { name: "Tandai siap beli" }),
     }).first();
 
     await expect(wishlistRow).toBeVisible();
     await wishlistRow.getByRole("button", { name: "Tandai siap beli" }).click();
 
-    const readyRow = page.locator("div").filter({
+    const readyRow = page.getByTestId(/wishlist-row-/).filter({
       has: page.getByText(wishName),
-    }).filter({
-      has: page.getByRole("button", { name: "Pindahkan ke shopping" }),
     }).first();
 
     await readyRow.getByRole("button", { name: "Pindahkan ke shopping" }).click();
@@ -98,27 +113,21 @@ test.describe("core workflows", () => {
       /Belanja sekarang jadi list operasional yang lebih cepat dipakai/i,
     );
 
-    let shoppingRow = page.locator("div").filter({
+    let shoppingRow = page.getByTestId(/shopping-row-/).filter({
       has: page.getByText(wishName),
-    }).filter({
-      has: page.getByRole("button", { name: "Mulai beli" }),
     }).first();
 
     await expect(shoppingRow).toBeVisible();
     await shoppingRow.getByRole("button", { name: "Mulai beli" }).click();
 
-    shoppingRow = page.locator("div").filter({
+    shoppingRow = page.getByTestId(/shopping-row-/).filter({
       has: page.getByText(wishName),
-    }).filter({
-      has: page.getByRole("button", { name: "Tandai sudah dibeli" }),
     }).first();
 
     await shoppingRow.getByRole("button", { name: "Tandai sudah dibeli" }).click();
 
-    const boughtRow = page.locator("div").filter({
+    const boughtRow = page.getByTestId(/shopping-row-/).filter({
       has: page.getByText(wishName),
-    }).filter({
-      has: page.getByRole("button", { name: "Catat ke finance" }),
     }).first();
 
     await boughtRow.getByRole("button", { name: "Catat ke finance" }).click();
@@ -133,7 +142,7 @@ test.describe("core workflows", () => {
     await expect(page.getByText(wishName)).toBeVisible();
   });
 
-  test("pinjaman baru muncul di debts dan dashboard", async ({ page }) => {
+  test("@smoke @regression pinjaman baru muncul di debts dan dashboard", async ({ page }) => {
     const debtName = uniqueLabel("E2E Debt");
     const today = new Date().toISOString().slice(0, 10);
 
@@ -155,7 +164,7 @@ test.describe("core workflows", () => {
     await gotoAndAssert(
       page,
       "/dashboard",
-      /Halaman masuk yang ringkas untuk melihat apa yang perlu perhatian/i,
+      /Dashboard yang ringkas dan tenang/i,
     );
 
     await expect(page.getByText(new RegExp(`${debtName}.*cicilan`, "i")).first()).toBeVisible();

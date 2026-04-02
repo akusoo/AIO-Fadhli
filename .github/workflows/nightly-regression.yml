@@ -1,0 +1,58 @@
+name: Nightly Regression
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: read
+
+jobs:
+  nightly-regression:
+    name: Nightly Regression
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+      E2E_TEST_SECRET: ${{ secrets.TEST_E2E_TEST_SECRET }}
+      E2E_TEST_EMAIL: ${{ secrets.TEST_E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.TEST_E2E_TEST_PASSWORD }}
+      TEST_RUN_ID: nightly-${{ github.run_id }}-${{ github.run_attempt }}
+      PLAYWRIGHT_RETRIES: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run full regression suite
+        run: pnpm test:e2e:regression
+
+      - name: Upload nightly regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-regression-artifacts
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
