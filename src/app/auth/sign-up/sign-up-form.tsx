@@ -3,16 +3,16 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { ActionButton, Input, SectionCard } from "@/components/ui";
 import { hasSupabaseEnv } from "@/lib/services/supabase-env";
-import { createSupabaseBrowser } from "@/lib/services/supabase";
 
-export function SignInForm() {
+export function SignUpForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isConfigured = useMemo(() => hasSupabaseEnv(), []);
 
-  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!isConfigured) {
@@ -20,23 +20,37 @@ export function SignInForm() {
       return;
     }
 
+    if (password !== confirmPassword) {
+      setFeedback("Konfirmasi password belum sama.");
+      return;
+    }
+
     setIsSubmitting(true);
     setFeedback(null);
 
     try {
-      const supabase = createSupabaseBrowser();
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch("/api/auth/sign-up", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
       });
 
-      if (error) {
-        throw error;
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; redirectTo?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Pendaftaran gagal.");
       }
 
-      window.location.assign("/dashboard");
+      window.location.assign(payload?.redirectTo || "/dashboard");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Gagal masuk dengan password.");
+      setFeedback(error instanceof Error ? error.message : "Pendaftaran gagal.");
     } finally {
       setIsSubmitting(false);
     }
@@ -45,14 +59,14 @@ export function SignInForm() {
   return (
     <SectionCard
       className="max-w-lg"
-      description="Masuk memakai email dan password biasa. Alur lupa password belum dibuka di v1."
-      title="Masuk ke AIO Tracker"
+      description="Buat akun baru dengan email dan password biasa. Setelah daftar, akun langsung aktif tanpa verifikasi email."
+      title="Buat akun AIO Tracker"
     >
-      <form className="space-y-4" onSubmit={handlePasswordSubmit}>
+      <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-1">
-          <p className="text-sm font-semibold text-[var(--foreground)]">Email dan password</p>
+          <p className="text-sm font-semibold text-[var(--foreground)]">Register biasa</p>
           <p className="text-sm leading-6 text-[var(--muted)]">
-            Pakai akun yang memang sudah punya kredensial. Reset password menyusul setelah v1.
+            Cocok untuk mulai cepat. Lupa password dan flow lanjutan auth menyusul setelah v1.
           </p>
         </div>
 
@@ -71,12 +85,26 @@ export function SignInForm() {
         <label className="block space-y-2 text-sm">
           <span className="font-medium text-[var(--foreground)]">Password</span>
           <Input
-            autoComplete="current-password"
+            autoComplete="new-password"
+            minLength={8}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="Masukkan password akun Anda"
+            placeholder="Minimal 8 karakter"
             required
             type="password"
             value={password}
+          />
+        </label>
+
+        <label className="block space-y-2 text-sm">
+          <span className="font-medium text-[var(--foreground)]">Konfirmasi password</span>
+          <Input
+            autoComplete="new-password"
+            minLength={8}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            placeholder="Ulangi password"
+            required
+            type="password"
+            value={confirmPassword}
           />
         </label>
 
@@ -88,10 +116,10 @@ export function SignInForm() {
 
         <div className="flex flex-wrap gap-3">
           <ActionButton type="submit">
-            {isSubmitting ? "Masuk..." : "Masuk"}
+            {isSubmitting ? "Membuat akun..." : "Daftar"}
           </ActionButton>
-          <ActionButton href="/auth/sign-up" variant="ghost">
-            Buat akun baru
+          <ActionButton href="/auth/sign-in" variant="ghost">
+            Sudah punya akun
           </ActionButton>
         </div>
       </form>

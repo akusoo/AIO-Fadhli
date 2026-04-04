@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
+import { SignUpForm } from "@/app/auth/sign-up/sign-up-form";
 import { PageHeader } from "@/components/ui";
-import { SignInForm } from "@/app/auth/sign-in/sign-in-form";
 import { hasSupabaseEnv } from "@/lib/services/supabase-env";
 import { createSupabaseServerComponentClient } from "@/lib/services/supabase-server";
 
-export default async function SignInPage() {
+export default async function SignUpPage() {
   if (hasSupabaseEnv()) {
     const supabase = await createSupabaseServerComponentClient();
     const {
@@ -21,9 +21,9 @@ export default async function SignInPage() {
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
         <PageHeader
           actions={undefined}
-          description="Masuk dulu memakai email dan password untuk mulai memakai data pribadi Anda."
+          description="Buat akun baru memakai email dan password, lalu langsung masuk ke aplikasi."
           eyebrow="Authentication"
-          title="AIO Personal Tracker"
+          title="Daftar AIO Personal Tracker"
         />
 
         {!hasSupabaseEnv() ? (
@@ -37,7 +37,7 @@ export default async function SignInPage() {
             </p>
           </div>
         ) : (
-          <SignInForm />
+          <SignUpForm />
         )}
       </div>
     </main>

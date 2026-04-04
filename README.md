@@ -22,7 +22,7 @@ App akan terbuka di `http://localhost:3000`.
 
 - Shell navigasi desktop `sidebar` + mobile `tab/sheet`
 - Workspace aktif untuk dashboard, finance, debt, tasks, projects, notes, wishlist, dan shopping
-- Auth magic link + boot snapshot backend
+- Auth email + password, register biasa, dan boot snapshot backend
 - Integrasi Telegram masih ada di repo sebagai `preview only`, tetapi keluar dari scope release `v1`
 
 ## File penting
@@ -59,7 +59,9 @@ TELEGRAM_WEBHOOK_SECRET=
 
 - Source of truth backend sekarang diarahkan ke `Supabase + Next.js route handlers`
 - SQL schema awal ada di `supabase/migrations/0001_init_aio_personal_tracker.sql`
-- Auth awal memakai `magic link`, dan halaman sign-in juga mendukung `email + password` untuk akun testing / manual yang sudah punya kredensial
+- Auth v1 memakai `email + password`
+- Register user baru tersedia di `/auth/sign-up`
+- Register berjalan lewat Supabase Auth dan akun baru langsung aktif tanpa verifikasi email
 - Session refresh memakai `src/proxy.ts`
 - Boot snapshot dan mutasi domain hidup di route `src/app/api/**`
 
