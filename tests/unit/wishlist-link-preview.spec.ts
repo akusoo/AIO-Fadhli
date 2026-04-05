@@ -15,11 +15,15 @@ const lookupMock = vi.mocked(lookup);
 const fixturePath = path.join(process.cwd(), "tests/fixtures/wishlist/product.html");
 const productFixture = fs.readFileSync(fixturePath, "utf8");
 
-function createHtmlResponse(body: string, url: string) {
+function createResponse(
+  body: string,
+  url: string,
+  options?: { contentType?: string; status?: number },
+) {
   const response = new Response(body, {
-    status: 200,
+    status: options?.status ?? 200,
     headers: {
-      "content-type": "text/html; charset=utf-8",
+      "content-type": options?.contentType ?? "text/html; charset=utf-8",
     },
   });
 
@@ -40,7 +44,7 @@ describe("wishlist link preview", () => {
 
   it("extracts title, image, site, and price from HTML metadata", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      createHtmlResponse(productFixture, "https://www.tokopedia.com/fadhli/keyboard-wireless"),
+      createResponse(productFixture, "https://www.tokopedia.com/fadhli/keyboard-wireless"),
     );
 
     await expect(
@@ -74,7 +78,7 @@ describe("wishlist link preview", () => {
 
   it("still returns document title when JSON-LD is malformed", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      createHtmlResponse(
+      createResponse(
         "<html><head><title>Fallback Title</title><script type=\"application/ld+json\">{broken}</script></head></html>",
         "https://www.example.com/product/fallback-title",
       ),
@@ -88,7 +92,7 @@ describe("wishlist link preview", () => {
 
   it("extracts image object and nested offer price from structured product data", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      createHtmlResponse(
+      createResponse(
         `
           <html>
             <head>
@@ -125,7 +129,7 @@ describe("wishlist link preview", () => {
 
   it("extracts product data from embedded JSON when meta price and image are missing", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      createHtmlResponse(
+      createResponse(
         `
           <html>
             <head>
@@ -193,7 +197,7 @@ describe("wishlist link preview", () => {
     });
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      createHtmlResponse(
+      createResponse(
         `
           <html>
             <head>
@@ -217,7 +221,7 @@ describe("wishlist link preview", () => {
 
   it("falls back to inline HTML price and image patterns when script data is not valid JSON", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      createHtmlResponse(
+      createResponse(
         `
           <html>
             <head>
@@ -237,6 +241,98 @@ describe("wishlist link preview", () => {
       title: "Portable Projector Mini",
       targetPrice: 130,
       imageUrl: "https://images.example.com/projector.jpg",
+    });
+  });
+
+  it("retries with a stripped canonical URL when tracking params cause a timeout", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const requestedUrl = new URL(String(input));
+
+      if (requestedUrl.searchParams.has("t_id")) {
+        const timeoutError = new Error("timed out");
+        timeoutError.name = "AbortError";
+        throw timeoutError;
+      }
+
+      return createResponse(
+        `
+          <html>
+            <head>
+              <meta property="og:title" content="Gravel Bike Police Toronto" />
+              <meta property="og:image" content="https://images.example.com/gravel-bike.jpg" />
+              <meta property="product:price:amount" content="2950000" />
+            </head>
+          </html>
+        `,
+        "https://www.tokopedia.com/jakartasepeda/sepeda-gravel-bike-police-toronto-1733551093865154096",
+      );
+    });
+
+    await expect(
+      resolveWishLinkPreview(
+        "https://www.tokopedia.com/jakartasepeda/sepeda-gravel-bike-police-toronto-1733551093865154096?t_id=1775382826980&t_st=1",
+      ),
+    ).resolves.toMatchObject({
+      sourceUrl:
+        "https://www.tokopedia.com/jakartasepeda/sepeda-gravel-bike-police-toronto-1733551093865154096",
+      title: "Gravel Bike Police Toronto",
+      targetPrice: 2_950_000,
+      imageUrl: "https://images.example.com/gravel-bike.jpg",
+    });
+  });
+
+  it("parses product HTML even when the origin returns a non-200 response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      createResponse(
+        `
+          <html>
+            <head>
+              <title>Portable SSD 2TB</title>
+              <meta property="og:title" content="Portable SSD 2TB" />
+              <meta property="og:image" content="https://images.example.com/ssd.jpg" />
+              <meta property="product:price:amount" content="1899000" />
+            </head>
+          </html>
+        `,
+        "https://shop.example.com/products/portable-ssd",
+        { status: 403 },
+      ),
+    );
+
+    await expect(
+      resolveWishLinkPreview("https://shop.example.com/products/portable-ssd"),
+    ).resolves.toMatchObject({
+      title: "Portable SSD 2TB",
+      targetPrice: 1_899_000,
+      imageUrl: "https://images.example.com/ssd.jpg",
+    });
+  });
+
+  it("extracts product data from standalone JSON responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      createResponse(
+        JSON.stringify({
+          product: {
+            title: "Action Camera 4K",
+            primary_image_url: "https://images.example.com/action-cam.jpg",
+            priceInfo: {
+              formatted_current_price: "Rp 1.299.000",
+            },
+            url: "https://shop.example.com/products/action-camera-4k",
+          },
+        }),
+        "https://shop.example.com/products/action-camera-4k",
+        { contentType: "application/json; charset=utf-8" },
+      ),
+    );
+
+    await expect(
+      resolveWishLinkPreview("https://shop.example.com/products/action-camera-4k"),
+    ).resolves.toMatchObject({
+      sourceUrl: "https://shop.example.com/products/action-camera-4k",
+      title: "Action Camera 4K",
+      targetPrice: 1_299_000,
+      imageUrl: "https://images.example.com/action-cam.jpg",
     });
   });
 });

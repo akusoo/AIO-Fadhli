@@ -52,6 +52,7 @@ type WishDraft = {
 
 type ResolvedWishLink = {
   imageUrl?: string;
+  resolution?: "fallback" | "parsed";
   siteName?: string;
   sourceUrl: string;
   targetPrice?: number;
@@ -135,9 +136,12 @@ function matchesQuery(item: WishItem, query: string) {
 }
 
 function applyResolvedWishLink(draft: WishDraft, preview: ResolvedWishLink): WishDraft {
+  const shouldKeepExistingName =
+    preview.resolution === "fallback" && Boolean(draft.name.trim());
+
   return {
     ...draft,
-    name: preview.title ?? draft.name,
+    name: shouldKeepExistingName ? draft.name : preview.title ?? draft.name,
     targetPrice: preview.targetPrice
       ? formatNumberInput(String(preview.targetPrice))
       : draft.targetPrice,
@@ -641,14 +645,17 @@ export default function WishlistPage() {
     }
 
     const payload = (await response.json().catch(() => null)) as
-      | { error?: string; item?: ResolvedWishLink }
+      | { error?: string; item?: ResolvedWishLink; resolution?: "fallback" | "parsed" }
       | null;
 
     if (!response.ok || !payload?.item) {
       throw new Error(payload?.error ?? "Gagal mengambil data dari link.");
     }
 
-    return payload.item;
+    return {
+      ...payload.item,
+      resolution: payload.resolution ?? "parsed",
+    };
   }
 
   async function handleResolveQuickLink() {
@@ -663,7 +670,9 @@ export default function WishlistPage() {
       const preview = await fetchResolvedWishLink(quickDraft.sourceUrl.trim());
       setQuickDraft((current) => applyResolvedWishLink(current, preview));
       setFeedback(
-        preview.title || preview.targetPrice || preview.imageUrl
+        preview.resolution === "fallback"
+          ? "Metadata lengkap belum bisa diambil. Judul diisi dari link, lalu cek harga dan gambar manual."
+          : preview.title || preview.targetPrice || preview.imageUrl
           ? "Data produk berhasil diambil dari link."
           : "Link berhasil dibaca. Lengkapi detail yang belum terisi.",
       );
@@ -685,7 +694,11 @@ export default function WishlistPage() {
     try {
       const preview = await fetchResolvedWishLink(editDraft.sourceUrl.trim());
       setEditDraft((current) => applyResolvedWishLink(current, preview));
-      setFeedback("Data produk berhasil diperbarui dari link.");
+      setFeedback(
+        preview.resolution === "fallback"
+          ? "Link terbaca terbatas. Cek ulang harga dan gambar secara manual."
+          : "Data produk berhasil diperbarui dari link.",
+      );
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Gagal mengambil data dari link.");
     } finally {

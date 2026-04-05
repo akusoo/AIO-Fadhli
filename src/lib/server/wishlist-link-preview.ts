@@ -10,23 +10,56 @@ export type WishLinkPreview = {
 };
 
 const MAX_REDIRECTS = 3;
-const REQUEST_TIMEOUT_MS = 5_000;
+const REQUEST_TIMEOUT_MS = 12_000;
+const TRACKING_QUERY_PARAM_PATTERNS = [
+  /^utm_/i,
+  /^fbclid$/i,
+  /^gclid$/i,
+  /^srsltid$/i,
+  /^ref$/i,
+  /^spm$/i,
+  /^t_/i,
+];
 const BROWSER_LIKE_HEADERS = {
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
   "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
   "Upgrade-Insecure-Requests": "1",
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
 };
 
+export type WishLinkPreviewDiagnostic = {
+  contentType?: string;
+  detail?: string;
+  elapsedMs: number;
+  reason: "content-type" | "http" | "network" | "timeout";
+  status?: number;
+  url: string;
+};
+
+class WishLinkPreviewRecoverableError extends Error {
+  diagnostics: WishLinkPreviewDiagnostic[];
+
+  constructor(message: string, diagnostics: WishLinkPreviewDiagnostic[]) {
+    super(message);
+    this.name = "WishLinkPreviewRecoverableError";
+    this.diagnostics = diagnostics;
+  }
+}
+
 export async function resolveWishLinkPreview(input: string): Promise<WishLinkPreview> {
   const initialUrl = parsePublicHttpUrl(input);
-  const response = await fetchHtmlWithRedirects(initialUrl);
-  const html = await response.text();
+  const document = await fetchHtmlWithRedirects(initialUrl);
+  const html = document.html;
   const metaTags = collectMetaTags(html);
   const ldJsonProduct = extractLdJsonProduct(html);
-  const finalUrl = response.url ? new URL(response.url) : initialUrl;
+  const finalUrl = document.finalUrl;
   const documentTitle = extractDocumentTitle(html);
   const titleHints = [
     metaTags.get("og:title"),
@@ -38,6 +71,10 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
     metaTags.get("twitter:site"),
     hostnameLabel(finalUrl.hostname),
   );
+  const standaloneStructuredProduct = extractStandaloneStructuredProductData(html, {
+    finalUrl,
+    titleHints,
+  });
   const preferredEmbeddedProduct = extractEmbeddedProductData(html, { finalUrl, titleHints });
   const inlinePatternProduct = extractHtmlPatternData(html);
 
@@ -45,12 +82,13 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
     sourceUrl: finalUrl.toString(),
     siteName,
     title: firstNonEmpty(
-      metaTags.get("og:title"),
-      metaTags.get("twitter:title"),
-      ldJsonProduct?.title,
-      preferredEmbeddedProduct?.title,
-      documentTitle,
-    ),
+        metaTags.get("og:title"),
+        metaTags.get("twitter:title"),
+        ldJsonProduct?.title,
+        standaloneStructuredProduct?.title,
+        preferredEmbeddedProduct?.title,
+        documentTitle,
+      ),
     imageUrl: normalizeImageUrl(
       firstNonEmpty(
         metaTags.get("og:image:secure_url"),
@@ -60,6 +98,7 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
         metaTags.get("twitter:image"),
         metaTags.get("image"),
         ldJsonProduct?.imageUrl,
+        standaloneStructuredProduct?.imageUrl,
         preferredEmbeddedProduct?.imageUrl,
         inlinePatternProduct.imageUrl,
       ),
@@ -75,6 +114,7 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
         ),
       ),
       ldJsonProduct?.targetPrice,
+      standaloneStructuredProduct?.targetPrice,
       preferredEmbeddedProduct?.targetPrice,
       inlinePatternProduct.targetPrice,
     ),
@@ -94,12 +134,49 @@ export function createWishLinkPreviewFallback(input: string): WishLinkPreview {
 }
 
 async function fetchHtmlWithRedirects(initialUrl: URL) {
+  const candidateUrls = createFetchUrlCandidates(initialUrl);
+  const diagnostics: WishLinkPreviewDiagnostic[] = [];
+
+  for (const candidateUrl of candidateUrls) {
+    try {
+      const result = await fetchHtmlDocument(candidateUrl);
+
+      if (diagnostics.length > 0) {
+        console.info("Wishlist link preview recovered after retry.", {
+          diagnostics,
+          finalUrl: result.finalUrl.toString(),
+          sourceUrl: initialUrl.toString(),
+        });
+      }
+
+      return result;
+    } catch (error) {
+      if (!(error instanceof WishLinkPreviewRecoverableError)) {
+        throw error;
+      }
+
+      diagnostics.push(...error.diagnostics);
+    }
+  }
+
+  const fallbackMessage =
+    diagnostics.find((entry) => entry.reason === "timeout")
+      ? "Link sedang lambat dibaca. Coba tempel ulang atau isi manual dulu."
+      : diagnostics.find((entry) => entry.reason === "content-type")
+        ? "Link ini belum bisa dibaca sebagai halaman produk."
+        : "Link tidak bisa diambil sekarang.";
+
+  throw new WishLinkPreviewRecoverableError(fallbackMessage, diagnostics);
+}
+
+async function fetchHtmlDocument(initialUrl: URL) {
   let currentUrl = initialUrl;
 
   for (let attempt = 0; attempt <= MAX_REDIRECTS; attempt += 1) {
     await assertPublicHostname(currentUrl.hostname);
 
     const controller = new AbortController();
+    const startedAt = Date.now();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
@@ -121,26 +198,58 @@ async function fetchHtmlWithRedirects(initialUrl: URL) {
         continue;
       }
 
-      if (!response.ok) {
-        throw new Error("Link tidak bisa diambil sekarang.");
-      }
-
       const contentType = response.headers.get("content-type") ?? "";
+      const html = await response.text();
+      const finalUrl = response.url ? parsePublicHttpUrl(response.url) : currentUrl;
 
-      if (
-        !contentType.includes("text/html") &&
-        !contentType.includes("application/xhtml+xml")
-      ) {
-        throw new Error("Link ini belum bisa dibaca sebagai halaman produk.");
+      if (canParseLinkDocument(response.status, contentType, html)) {
+        return {
+          finalUrl,
+          html,
+        };
       }
 
-      return response;
+      throw new WishLinkPreviewRecoverableError(
+        response.ok
+          ? "Link ini belum bisa dibaca sebagai halaman produk."
+          : "Link tidak bisa diambil sekarang.",
+        [
+          {
+            contentType,
+            detail: summarizeDocumentShape(html),
+            elapsedMs: Date.now() - startedAt,
+            reason: response.ok ? "content-type" : "http",
+            status: response.status,
+            url: currentUrl.toString(),
+          },
+        ],
+      );
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("Link sedang lambat dibaca. Coba tempel ulang atau isi manual dulu.");
+      if (error instanceof WishLinkPreviewRecoverableError) {
+        throw error;
       }
 
-      throw error;
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new WishLinkPreviewRecoverableError(
+          "Link sedang lambat dibaca. Coba tempel ulang atau isi manual dulu.",
+          [
+            {
+              elapsedMs: Date.now() - startedAt,
+              reason: "timeout",
+              url: currentUrl.toString(),
+            },
+          ],
+        );
+      }
+
+      throw new WishLinkPreviewRecoverableError("Link tidak bisa diambil sekarang.", [
+        {
+          detail: error instanceof Error ? error.message : String(error),
+          elapsedMs: Date.now() - startedAt,
+          reason: "network",
+          url: currentUrl.toString(),
+        },
+      ]);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -434,6 +543,25 @@ function extractEmbeddedProductData(
     }
   }
 
+  const product = selectPreferredProductLikeData(candidates, signals);
+
+  if (!product) {
+    return undefined;
+  }
+
+  return {
+    imageUrl: extractCandidateImage(product),
+    targetPrice: extractCandidatePrice(product),
+    title: extractCandidateTitle(product),
+  };
+}
+
+function extractStandaloneStructuredProductData(
+  content: string,
+  signals: { finalUrl: URL; titleHints: string[] },
+) {
+  const payloads = extractStructuredDataPayloads(content);
+  const candidates = payloads.flatMap((payload) => collectProductLikeData(payload));
   const product = selectPreferredProductLikeData(candidates, signals);
 
   if (!product) {
@@ -816,6 +944,83 @@ function normalizeImageUrl(value: string | undefined, baseUrl: URL) {
   }
 }
 
+function createFetchUrlCandidates(initialUrl: URL) {
+  const normalizedUrls = new Map<string, URL>();
+  normalizedUrls.set(initialUrl.toString(), initialUrl);
+
+  const strippedUrl = stripTrackingSearchParams(initialUrl);
+  normalizedUrls.set(strippedUrl.toString(), strippedUrl);
+
+  return [...normalizedUrls.values()];
+}
+
+function stripTrackingSearchParams(url: URL) {
+  const nextUrl = new URL(url.toString());
+  const keys = [...nextUrl.searchParams.keys()];
+
+  for (const key of keys) {
+    if (TRACKING_QUERY_PARAM_PATTERNS.some((pattern) => pattern.test(key))) {
+      nextUrl.searchParams.delete(key);
+    }
+  }
+
+  return nextUrl;
+}
+
+function canParseLinkDocument(status: number, contentType: string, body: string) {
+  const htmlLike =
+    contentType.includes("text/html") ||
+    contentType.includes("application/xhtml+xml") ||
+    looksLikeHtmlDocument(body);
+  const structuredLike =
+    contentType.includes("application/json") || looksLikeStructuredDataPayload(body);
+
+  if (status >= 200 && status < 300) {
+    return htmlLike || structuredLike;
+  }
+
+  return hasUsefulProductSignals(body) && (htmlLike || structuredLike);
+}
+
+function looksLikeHtmlDocument(value: string) {
+  const trimmed = value.trimStart();
+
+  return (
+    trimmed.startsWith("<!DOCTYPE html") ||
+    trimmed.startsWith("<html") ||
+    trimmed.startsWith("<head") ||
+    trimmed.startsWith("<body")
+  );
+}
+
+function looksLikeStructuredDataPayload(value: string) {
+  const trimmed = value.trim();
+
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
+}
+
+function hasUsefulProductSignals(value: string) {
+  return /og:title|og:image|application\/ld\+json|product:price:amount|current_retail|formatted_current_price|__NEXT_DATA__|JSON\.parse\(/i.test(
+    value,
+  );
+}
+
+function summarizeDocumentShape(value: string) {
+  if (!value.trim()) {
+    return "empty-body";
+  }
+
+  if (looksLikeStructuredDataPayload(value)) {
+    return "json-body";
+  }
+
+  if (looksLikeHtmlDocument(value)) {
+    return hasUsefulProductSignals(value) ? "html-with-product-signals" : "html-without-product-signals";
+  }
+
+  return "unknown-body";
+}
+
 function decodeHtmlEntities(value: string) {
   return value
     .replace(/&amp;/g, "&")
@@ -848,4 +1053,24 @@ function firstNonEmpty(...values: Array<string | undefined>) {
 
 function firstDefinedNumber(...values: Array<number | undefined>) {
   return values.find((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+export function isRecoverableWishLinkPreviewError(error: unknown) {
+  if (error instanceof WishLinkPreviewRecoverableError) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return [
+    "Link tidak bisa diambil sekarang.",
+    "Link ini belum bisa dibaca sebagai halaman produk.",
+    "Link sedang lambat dibaca. Coba tempel ulang atau isi manual dulu.",
+  ].includes(error.message);
+}
+
+export function getWishLinkPreviewDiagnostics(error: unknown) {
+  return error instanceof WishLinkPreviewRecoverableError ? error.diagnostics : [];
 }

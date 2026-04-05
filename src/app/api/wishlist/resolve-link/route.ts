@@ -1,5 +1,7 @@
 import {
   createWishLinkPreviewFallback,
+  getWishLinkPreviewDiagnostics,
+  isRecoverableWishLinkPreviewError,
   resolveWishLinkPreview,
 } from "@/lib/server/wishlist-link-preview";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
@@ -22,18 +24,25 @@ export async function POST(request: Request) {
     }
 
     let item;
+    let resolution: "fallback" | "parsed" = "parsed";
 
     try {
       item = await resolveWishLinkPreview(url);
     } catch (error) {
-      if (isRecoverableLinkPreviewError(error)) {
+      if (isRecoverableWishLinkPreviewError(error)) {
+        resolution = "fallback";
+        console.warn("Wishlist link preview fell back to URL metadata.", {
+          diagnostics: getWishLinkPreviewDiagnostics(error),
+          message: error instanceof Error ? error.message : String(error),
+          sourceUrl: url,
+        });
         item = createWishLinkPreviewFallback(url);
       } else {
         throw error;
       }
     }
 
-    return okJson({ item }, context.applyCookies);
+    return okJson({ item, resolution }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengambil data dari link.",
@@ -41,16 +50,4 @@ export async function POST(request: Request) {
       context.applyCookies,
     );
   }
-}
-
-function isRecoverableLinkPreviewError(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return [
-    "Link tidak bisa diambil sekarang.",
-    "Link ini belum bisa dibaca sebagai halaman produk.",
-    "Link sedang lambat dibaca. Coba tempel ulang atau isi manual dulu.",
-  ].includes(error.message);
 }
