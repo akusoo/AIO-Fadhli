@@ -85,4 +85,79 @@ describe("wishlist link preview", () => {
       siteName: "example.com",
     });
   });
+
+  it("extracts image object and nested offer price from structured product data", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      createHtmlResponse(
+        `
+          <html>
+            <head>
+              <title>Monitor 4K 27 Inch</title>
+              <meta itemprop="image" content="https://images.example.com/monitor-meta.jpg" />
+              <script type="application/ld+json">
+                {
+                  "@context": "https://schema.org",
+                  "@type": "Product",
+                  "name": "Monitor 4K 27 Inch",
+                  "image": {
+                    "@type": "ImageObject",
+                    "url": "https://images.example.com/monitor.jpg"
+                  },
+                  "offers": {
+                    "@type": "AggregateOffer",
+                    "lowPrice": "3999000"
+                  }
+                }
+              </script>
+            </head>
+          </html>
+        `,
+        "https://shop.example.com/products/monitor-4k",
+      ),
+    );
+
+    await expect(resolveWishLinkPreview("https://shop.example.com/products/monitor-4k")).resolves.toMatchObject({
+      title: "Monitor 4K 27 Inch",
+      targetPrice: 3_999_000,
+      imageUrl: "https://images.example.com/monitor-meta.jpg",
+    });
+  });
+
+  it("extracts product data from embedded JSON when meta price and image are missing", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      createHtmlResponse(
+        `
+          <html>
+            <head>
+              <title>Wireless Earbuds X</title>
+              <script type="application/json">
+                {
+                  "props": {
+                    "pageProps": {
+                      "product": {
+                        "title": "Wireless Earbuds X",
+                        "primaryImage": {
+                          "url": "https://images.example.com/earbuds.jpg"
+                        },
+                        "pricing": {
+                          "price": "749000"
+                        }
+                      }
+                    }
+                  }
+                }
+              </script>
+            </head>
+          </html>
+        `,
+        "https://store.example.com/products/earbuds-x",
+      ),
+    );
+
+    await expect(resolveWishLinkPreview("https://store.example.com/products/earbuds-x")).resolves.toMatchObject({
+      title: "Wireless Earbuds X",
+      targetPrice: 749_000,
+      imageUrl: "https://images.example.com/earbuds.jpg",
+    });
+  });
 });

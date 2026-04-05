@@ -68,19 +68,6 @@ textarea {
 
 button {
   cursor: pointer;
-  background-color: #000;
-  border-color: #000;
-  color: #fff;
-}
-
-button:hover:not(:disabled) {
-  background-color: rgba(0, 0, 0, 0.92);
-}
-
-button:disabled {
-  background-color: rgba(23, 37, 47, 0.18);
-  border-color: rgba(23, 37, 47, 0.18);
-  color: var(--muted);
 }
 
 button,

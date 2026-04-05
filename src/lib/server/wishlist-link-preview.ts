@@ -26,6 +26,7 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
   const html = await response.text();
   const metaTags = collectMetaTags(html);
   const ldJsonProduct = extractLdJsonProduct(html);
+  const embeddedProduct = extractEmbeddedProductData(html);
   const finalUrl = response.url ? new URL(response.url) : initialUrl;
   const siteName = firstNonEmpty(
     metaTags.get("og:site_name"),
@@ -40,14 +41,19 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
       metaTags.get("og:title"),
       metaTags.get("twitter:title"),
       ldJsonProduct?.title,
+      embeddedProduct?.title,
       extractDocumentTitle(html),
     ),
     imageUrl: normalizeImageUrl(
       firstNonEmpty(
         metaTags.get("og:image:secure_url"),
+        metaTags.get("og:image:url"),
         metaTags.get("og:image"),
+        metaTags.get("twitter:image:src"),
         metaTags.get("twitter:image"),
+        metaTags.get("image"),
         ldJsonProduct?.imageUrl,
+        embeddedProduct?.imageUrl,
       ),
       finalUrl,
     ),
@@ -55,11 +61,13 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
       parsePriceValue(
         firstNonEmpty(
           metaTags.get("product:price:amount"),
+          metaTags.get("product:price:standard_amount"),
           metaTags.get("og:price:amount"),
           metaTags.get("price"),
         ),
       ),
       ldJsonProduct?.targetPrice,
+      embeddedProduct?.targetPrice,
     ),
   };
 }
@@ -214,7 +222,11 @@ function collectMetaTags(html: string) {
   const matches = html.match(/<meta\s+[^>]*>/gi) ?? [];
 
   for (const tag of matches) {
-    const key = firstNonEmpty(getTagAttribute(tag, "property"), getTagAttribute(tag, "name"));
+    const key = firstNonEmpty(
+      getTagAttribute(tag, "property"),
+      getTagAttribute(tag, "name"),
+      getTagAttribute(tag, "itemprop"),
+    );
     const content = getTagAttribute(tag, "content");
 
     if (!key || !content) {
@@ -325,7 +337,25 @@ function extractImageValue(value: unknown): string | undefined {
   }
 
   if (Array.isArray(value)) {
-    return value.find((item) => typeof item === "string") as string | undefined;
+    for (const item of value) {
+      const image = extractImageValue(item);
+
+      if (image) {
+        return image;
+      }
+    }
+
+    return undefined;
+  }
+
+  if (value && typeof value === "object") {
+    const candidate = value as Record<string, unknown>;
+
+    return firstNonEmpty(
+      typeof candidate.url === "string" ? cleanText(candidate.url) : undefined,
+      typeof candidate.contentUrl === "string" ? cleanText(candidate.contentUrl) : undefined,
+      typeof candidate["@id"] === "string" ? cleanText(candidate["@id"]) : undefined,
+    );
   }
 
   return undefined;
@@ -350,10 +380,114 @@ function extractOfferPrice(value: unknown): number | undefined {
 
   if (typeof value === "object") {
     const candidate = value as Record<string, unknown>;
-    return parsePriceValue(candidate.price);
+    return firstDefinedNumber(
+      parsePriceValue(candidate.price),
+      parsePriceValue(candidate.lowPrice),
+      parsePriceValue(candidate.highPrice),
+      extractOfferPrice(candidate.priceSpecification),
+      extractOfferPrice(candidate.offers),
+    );
   }
 
   return parsePriceValue(value);
+}
+
+function extractEmbeddedProductData(html: string) {
+  const scripts = html.match(/<script[^>]*>[\s\S]*?<\/script>/gi) ?? [];
+
+  for (const script of scripts) {
+    const contentMatch = script.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+
+    if (!contentMatch?.[1]) {
+      continue;
+    }
+
+    const content = decodeHtmlEntities(contentMatch[1].trim());
+
+    if (!(content.startsWith("{") || content.startsWith("["))) {
+      continue;
+    }
+
+    const parsed = safeJsonParse(content);
+    const product = findProductLikeData(parsed);
+
+    if (!product) {
+      continue;
+    }
+
+    return {
+      imageUrl: firstNonEmpty(
+        extractImageValue(product.image),
+        extractImageValue(product.imageUrl),
+        extractImageValue(product.primaryImage),
+        extractImageValue(product.thumbnailUrl),
+      ),
+      targetPrice: firstDefinedNumber(
+        extractOfferPrice(product.offers),
+        parsePriceValue(product.price),
+        extractOfferPrice(product.priceInfo),
+        extractOfferPrice(product.pricing),
+      ),
+      title: firstNonEmpty(
+        typeof product.name === "string" ? cleanText(product.name) : undefined,
+        typeof product.title === "string" ? cleanText(product.title) : undefined,
+      ),
+    };
+  }
+
+  return undefined;
+}
+
+function findProductLikeData(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const product = findProductLikeData(item);
+
+      if (product) {
+        return product;
+      }
+    }
+
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const candidateType = candidate["@type"];
+  const hasTitle = typeof candidate.name === "string" || typeof candidate.title === "string";
+  const hasImage = Boolean(
+    candidate.image ??
+      candidate.imageUrl ??
+      candidate.primaryImage ??
+      candidate.thumbnailUrl,
+  );
+  const hasPrice = Boolean(
+    candidate.price ??
+      candidate.offers ??
+      candidate.priceInfo ??
+      candidate.pricing,
+  );
+
+  if (
+    candidateType === "Product" ||
+    (Array.isArray(candidateType) && candidateType.includes("Product")) ||
+    (hasTitle && (hasImage || hasPrice))
+  ) {
+    return candidate;
+  }
+
+  for (const nestedValue of Object.values(candidate)) {
+    const product = findProductLikeData(nestedValue);
+
+    if (product) {
+      return product;
+    }
+  }
+
+  return null;
 }
 
 function parsePriceValue(value: unknown): number | undefined {

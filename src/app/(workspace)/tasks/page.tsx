@@ -197,10 +197,10 @@ function FilterButton({
   return (
     <button
       className={cn(
-        "flex w-full items-start justify-between gap-3 rounded-[18px] border border-black px-3 py-3 text-left transition-colors",
+        "flex w-full items-start justify-between gap-3 rounded-[18px] px-3 py-3 text-left transition-colors",
         active
-          ? "bg-black text-white"
-          : "bg-black/85 text-white hover:bg-black",
+          ? "bg-[var(--accent-strong)] text-white"
+          : "text-[var(--foreground)] hover:bg-white/72",
       )}
       onClick={onClick}
       type="button"

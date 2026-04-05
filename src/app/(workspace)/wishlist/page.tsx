@@ -191,10 +191,10 @@ function ToggleButton({
   return (
     <button
       className={cn(
-        "rounded-[16px] border border-black px-4 py-2 text-sm font-medium transition-all duration-150",
+        "rounded-[16px] px-4 py-2 text-sm font-medium transition-all duration-150",
         active
-          ? "bg-black text-white shadow-[var(--shadow-sm)]"
-          : "bg-black/85 text-white hover:bg-black",
+          ? "bg-[var(--accent-strong)] text-white shadow-[var(--shadow-sm)]"
+          : "border border-[var(--border)] bg-[rgba(255,255,255,0.76)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-white",
       )}
       onClick={onClick}
       type="button"
@@ -222,11 +222,11 @@ function InlineActionButton({
       className={cn(
         "inline-flex min-h-10 items-center justify-center rounded-[16px] px-4 py-2 text-sm font-medium transition-all duration-150 disabled:pointer-events-none disabled:opacity-60",
         variant === "primary" &&
-          "border border-black bg-black text-white shadow-[var(--shadow-sm)] hover:-translate-y-0.5 hover:bg-black/90",
+          "bg-[var(--accent-strong)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-0.5 hover:bg-[var(--accent)]",
         variant === "secondary" &&
-          "border border-black bg-black text-white hover:-translate-y-0.5 hover:bg-black/90",
+          "border border-[var(--border)] bg-[rgba(255,255,255,0.76)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-white",
         variant === "ghost" &&
-          "border border-black bg-black/85 text-white hover:bg-black",
+          "text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] hover:text-[var(--foreground)]",
       )}
       disabled={disabled}
       onClick={onClick}

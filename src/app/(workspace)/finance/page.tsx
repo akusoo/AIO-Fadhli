@@ -74,10 +74,10 @@ function TabButton({
   return (
     <button
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border border-black px-4 py-2 text-sm font-medium transition-colors",
+        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
         active
-          ? "bg-black text-white"
-          : "bg-black/85 text-white hover:bg-black",
+          ? "bg-[var(--accent-strong)] text-white"
+          : "border border-[var(--border)] bg-white/75 text-[var(--foreground)] hover:bg-white",
       )}
       onClick={onClick}
       type="button"
@@ -100,10 +100,10 @@ function PreviewToggle({
   return (
     <button
       className={cn(
-        "rounded-full border border-black px-3 py-2 text-xs font-medium transition-colors",
+        "rounded-full px-3 py-2 text-xs font-medium transition-colors",
         active
-          ? "bg-black text-white"
-          : "bg-black/85 text-white hover:bg-black",
+          ? "bg-[var(--accent-strong)] text-white"
+          : "border border-[var(--border)] bg-white/80 text-[var(--foreground)] hover:bg-white",
       )}
       onClick={onClick}
       type="button"
