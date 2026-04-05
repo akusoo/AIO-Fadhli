@@ -26,13 +26,20 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
   const html = await response.text();
   const metaTags = collectMetaTags(html);
   const ldJsonProduct = extractLdJsonProduct(html);
-  const embeddedProduct = extractEmbeddedProductData(html);
   const finalUrl = response.url ? new URL(response.url) : initialUrl;
+  const documentTitle = extractDocumentTitle(html);
+  const titleHints = [
+    metaTags.get("og:title"),
+    metaTags.get("twitter:title"),
+    documentTitle,
+  ].flatMap((value) => (value ? [value] : []));
   const siteName = firstNonEmpty(
     metaTags.get("og:site_name"),
     metaTags.get("twitter:site"),
     hostnameLabel(finalUrl.hostname),
   );
+  const preferredEmbeddedProduct = extractEmbeddedProductData(html, { finalUrl, titleHints });
+  const inlinePatternProduct = extractHtmlPatternData(html);
 
   return {
     sourceUrl: finalUrl.toString(),
@@ -41,8 +48,8 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
       metaTags.get("og:title"),
       metaTags.get("twitter:title"),
       ldJsonProduct?.title,
-      embeddedProduct?.title,
-      extractDocumentTitle(html),
+      preferredEmbeddedProduct?.title,
+      documentTitle,
     ),
     imageUrl: normalizeImageUrl(
       firstNonEmpty(
@@ -53,7 +60,8 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
         metaTags.get("twitter:image"),
         metaTags.get("image"),
         ldJsonProduct?.imageUrl,
-        embeddedProduct?.imageUrl,
+        preferredEmbeddedProduct?.imageUrl,
+        inlinePatternProduct.imageUrl,
       ),
       finalUrl,
     ),
@@ -67,7 +75,8 @@ export async function resolveWishLinkPreview(input: string): Promise<WishLinkPre
         ),
       ),
       ldJsonProduct?.targetPrice,
-      embeddedProduct?.targetPrice,
+      preferredEmbeddedProduct?.targetPrice,
+      inlinePatternProduct.targetPrice,
     ),
   };
 }
@@ -354,6 +363,9 @@ function extractImageValue(value: unknown): string | undefined {
     return firstNonEmpty(
       typeof candidate.url === "string" ? cleanText(candidate.url) : undefined,
       typeof candidate.contentUrl === "string" ? cleanText(candidate.contentUrl) : undefined,
+      typeof candidate.image_url === "string" ? cleanText(candidate.image_url) : undefined,
+      typeof candidate.primary_image === "string" ? cleanText(candidate.primary_image) : undefined,
+      typeof candidate.thumbnail_url === "string" ? cleanText(candidate.thumbnail_url) : undefined,
       typeof candidate["@id"] === "string" ? cleanText(candidate["@id"]) : undefined,
     );
   }
@@ -382,6 +394,14 @@ function extractOfferPrice(value: unknown): number | undefined {
     const candidate = value as Record<string, unknown>;
     return firstDefinedNumber(
       parsePriceValue(candidate.price),
+      parsePriceValue(candidate.current_retail),
+      parsePriceValue(candidate.currentRetail),
+      parsePriceValue(candidate.reg_retail),
+      parsePriceValue(candidate.regRetail),
+      parsePriceValue(candidate.sale_price),
+      parsePriceValue(candidate.salePrice),
+      parsePriceValue(candidate.formatted_current_price),
+      parsePriceValue(candidate.formattedCurrentPrice),
       parsePriceValue(candidate.lowPrice),
       parsePriceValue(candidate.highPrice),
       extractOfferPrice(candidate.priceSpecification),
@@ -392,8 +412,12 @@ function extractOfferPrice(value: unknown): number | undefined {
   return parsePriceValue(value);
 }
 
-function extractEmbeddedProductData(html: string) {
+function extractEmbeddedProductData(
+  html: string,
+  signals: { finalUrl: URL; titleHints: string[] },
+) {
   const scripts = html.match(/<script[^>]*>[\s\S]*?<\/script>/gi) ?? [];
+  const candidates: Array<Record<string, unknown>> = [];
 
   for (const script of scripts) {
     const contentMatch = script.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
@@ -403,91 +427,321 @@ function extractEmbeddedProductData(html: string) {
     }
 
     const content = decodeHtmlEntities(contentMatch[1].trim());
+    const payloads = extractStructuredDataPayloads(content);
 
-    if (!(content.startsWith("{") || content.startsWith("["))) {
-      continue;
+    for (const payload of payloads) {
+      candidates.push(...collectProductLikeData(payload));
     }
-
-    const parsed = safeJsonParse(content);
-    const product = findProductLikeData(parsed);
-
-    if (!product) {
-      continue;
-    }
-
-    return {
-      imageUrl: firstNonEmpty(
-        extractImageValue(product.image),
-        extractImageValue(product.imageUrl),
-        extractImageValue(product.primaryImage),
-        extractImageValue(product.thumbnailUrl),
-      ),
-      targetPrice: firstDefinedNumber(
-        extractOfferPrice(product.offers),
-        parsePriceValue(product.price),
-        extractOfferPrice(product.priceInfo),
-        extractOfferPrice(product.pricing),
-      ),
-      title: firstNonEmpty(
-        typeof product.name === "string" ? cleanText(product.name) : undefined,
-        typeof product.title === "string" ? cleanText(product.title) : undefined,
-      ),
-    };
   }
 
-  return undefined;
+  const product = selectPreferredProductLikeData(candidates, signals);
+
+  if (!product) {
+    return undefined;
+  }
+
+  return {
+    imageUrl: extractCandidateImage(product),
+    targetPrice: extractCandidatePrice(product),
+    title: extractCandidateTitle(product),
+  };
 }
 
-function findProductLikeData(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object") {
-    return null;
+function extractStructuredDataPayloads(content: string) {
+  const payloads: unknown[] = [];
+  const trimmed = content.trim();
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const parsed = safeJsonParse(trimmed);
+
+    if (parsed) {
+      payloads.push(parsed);
+    }
   }
 
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const product = findProductLikeData(item);
+  const jsonParseMatches =
+    content.matchAll(/JSON\.parse\(("(?:\\.|[^"\\])*")\)/g);
 
-      if (product) {
-        return product;
-      }
+  for (const match of jsonParseMatches) {
+    const decoded = safeJsonParse(match[1]);
+
+    if (typeof decoded !== "string") {
+      continue;
     }
 
-    return null;
+    const parsed = safeJsonParse(decoded);
+
+    if (parsed) {
+      payloads.push(parsed);
+    }
+  }
+
+  return payloads;
+}
+
+function collectProductLikeData(
+  value: unknown,
+  seen = new Set<object>(),
+): Array<Record<string, unknown>> {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  if (seen.has(value)) {
+    return [];
+  }
+
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectProductLikeData(item, seen));
   }
 
   const candidate = value as Record<string, unknown>;
   const candidateType = candidate["@type"];
-  const hasTitle = typeof candidate.name === "string" || typeof candidate.title === "string";
-  const hasImage = Boolean(
-    candidate.image ??
-      candidate.imageUrl ??
-      candidate.primaryImage ??
-      candidate.thumbnailUrl,
-  );
-  const hasPrice = Boolean(
-    candidate.price ??
-      candidate.offers ??
-      candidate.priceInfo ??
-      candidate.pricing,
-  );
+  const items: Array<Record<string, unknown>> = [];
+  const hasTitle = Boolean(extractCandidateTitle(candidate));
+  const hasImage = Boolean(extractCandidateImage(candidate));
+  const hasPrice = Boolean(extractCandidatePrice(candidate));
+  const hasSourceUrl = Boolean(extractCandidateSourceUrl(candidate));
 
   if (
     candidateType === "Product" ||
     (Array.isArray(candidateType) && candidateType.includes("Product")) ||
-    (hasTitle && (hasImage || hasPrice))
+    (hasTitle && (hasImage || hasPrice || hasSourceUrl))
   ) {
-    return candidate;
+    items.push(candidate);
   }
 
   for (const nestedValue of Object.values(candidate)) {
-    const product = findProductLikeData(nestedValue);
+    items.push(...collectProductLikeData(nestedValue, seen));
+  }
 
-    if (product) {
-      return product;
+  return items;
+}
+
+function selectPreferredProductLikeData(
+  candidates: Array<Record<string, unknown>>,
+  signals: { finalUrl: URL; titleHints: string[] },
+) {
+  let bestCandidate: Record<string, unknown> | undefined;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const score = scoreProductLikeData(candidate, signals);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestCandidate = candidate;
     }
   }
 
-  return null;
+  return bestCandidate;
+}
+
+function scoreProductLikeData(
+  candidate: Record<string, unknown>,
+  signals: { finalUrl: URL; titleHints: string[] },
+) {
+  let score = 0;
+  const title = extractCandidateTitle(candidate);
+  const sourceUrl = extractCandidateSourceUrl(candidate);
+  const hasImage = Boolean(extractCandidateImage(candidate));
+  const hasPrice = Boolean(extractCandidatePrice(candidate));
+
+  if (title) {
+    score += 2;
+  }
+
+  if (hasImage) {
+    score += 2;
+  }
+
+  if (hasPrice) {
+    score += 3;
+  }
+
+  if (sourceUrl && urlsLookEquivalent(sourceUrl, signals.finalUrl)) {
+    score += 6;
+  }
+
+  const normalizedTitle = title ? normalizeComparableText(title) : "";
+
+  for (const hint of signals.titleHints) {
+    const normalizedHint = normalizeComparableText(hint);
+
+    if (!normalizedTitle || !normalizedHint) {
+      continue;
+    }
+
+    if (normalizedTitle === normalizedHint) {
+      score += 8;
+      continue;
+    }
+
+    if (
+      normalizedTitle.includes(normalizedHint) ||
+      normalizedHint.includes(normalizedTitle)
+    ) {
+      score += 4;
+    }
+  }
+
+  return score;
+}
+
+function extractCandidateTitle(candidate: Record<string, unknown>) {
+  const productDescription = asRecord(candidate.product_description);
+  const nestedProductDescription = asRecord(candidate.productDescription);
+
+  return firstNonEmpty(
+    typeof candidate.name === "string" ? cleanText(candidate.name) : undefined,
+    typeof candidate.title === "string" ? cleanText(candidate.title) : undefined,
+    typeof productDescription?.title === "string" ? cleanText(productDescription.title) : undefined,
+    typeof nestedProductDescription?.title === "string"
+      ? cleanText(nestedProductDescription.title)
+      : undefined,
+  );
+}
+
+function extractCandidateImage(candidate: Record<string, unknown>) {
+  const imageInfo = asRecord(candidate.image_info);
+  const nestedImageInfo = asRecord(candidate.imageInfo);
+  const enrichment = asRecord(candidate.enrichment);
+  const enrichmentImages = asRecord(enrichment?.images);
+
+  return firstNonEmpty(
+    extractImageValue(candidate.image),
+    extractImageValue(candidate.imageUrl),
+    extractImageValue(candidate.primaryImage),
+    extractImageValue(candidate.primary_image),
+    extractImageValue(candidate.image_url),
+    extractImageValue(candidate.thumbnailUrl),
+    extractImageValue(candidate.thumbnail_url),
+    extractImageValue(imageInfo),
+    extractImageValue(imageInfo?.primary_image),
+    typeof imageInfo?.primary_image_url === "string"
+      ? cleanText(imageInfo.primary_image_url)
+      : undefined,
+    extractImageValue(nestedImageInfo),
+    extractImageValue(nestedImageInfo?.primaryImage),
+    typeof nestedImageInfo?.primaryImageUrl === "string"
+      ? cleanText(nestedImageInfo.primaryImageUrl)
+      : undefined,
+    extractImageValue(enrichmentImages),
+    extractImageValue(enrichmentImages?.primary_image),
+    typeof enrichmentImages?.primary_image_url === "string"
+      ? cleanText(enrichmentImages.primary_image_url)
+      : undefined,
+    typeof enrichmentImages?.primaryImageUrl === "string"
+      ? cleanText(enrichmentImages.primaryImageUrl)
+      : undefined,
+  );
+}
+
+function extractCandidatePrice(candidate: Record<string, unknown>) {
+  return firstDefinedNumber(
+    extractOfferPrice(candidate.offers),
+    parsePriceValue(candidate.price),
+    extractOfferPrice(candidate.price),
+    extractOfferPrice(candidate.priceInfo),
+    extractOfferPrice(candidate.pricing),
+    parsePriceValue(candidate.current_retail),
+    parsePriceValue(candidate.currentRetail),
+    parsePriceValue(candidate.formatted_current_price),
+    parsePriceValue(candidate.formattedCurrentPrice),
+  );
+}
+
+function extractCandidateSourceUrl(candidate: Record<string, unknown>) {
+  return firstNonEmpty(
+    typeof candidate.buy_url === "string" ? cleanText(candidate.buy_url) : undefined,
+    typeof candidate.buyUrl === "string" ? cleanText(candidate.buyUrl) : undefined,
+    typeof candidate.source_url === "string" ? cleanText(candidate.source_url) : undefined,
+    typeof candidate.sourceUrl === "string" ? cleanText(candidate.sourceUrl) : undefined,
+    typeof candidate.url === "string" ? cleanText(candidate.url) : undefined,
+  );
+}
+
+function urlsLookEquivalent(candidateUrl: string, finalUrl: URL) {
+  try {
+    const parsed = new URL(candidateUrl, finalUrl);
+
+    return (
+      parsed.hostname.replace(/^www\./i, "") === finalUrl.hostname.replace(/^www\./i, "") &&
+      parsed.pathname === finalUrl.pathname
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeComparableText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function asRecord(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function extractHtmlPatternData(html: string) {
+  return {
+    imageUrl: extractHtmlPatternImage(html),
+    targetPrice: extractHtmlPatternPrice(html),
+  };
+}
+
+function extractHtmlPatternImage(html: string) {
+  const value = firstNonEmpty(
+    extractHtmlPatternString(
+      html,
+      /(?:\\?")primary_image_url(?:\\?")\s*:\s*(?:\\?")((?:https?:)?(?:\\\/|\/){2}[^"]+?)(?:\\?")/i,
+    ),
+    extractHtmlPatternString(
+      html,
+      /(?:\\?")image_url(?:\\?")\s*:\s*(?:\\?")((?:https?:)?(?:\\\/|\/){2}[^"]+?)(?:\\?")/i,
+    ),
+  );
+
+  if (!value) {
+    return undefined;
+  }
+
+  return value.replace(/\\\//g, "/");
+}
+
+function extractHtmlPatternPrice(html: string) {
+  return firstDefinedNumber(
+    extractHtmlPatternNumber(
+      html,
+      /(?:\\?")current_retail(?:\\?")\s*:\s*([0-9]+(?:\.[0-9]{1,2})?)/i,
+    ),
+    extractHtmlPatternNumber(
+      html,
+      /(?:\\?")reg_retail(?:\\?")\s*:\s*([0-9]+(?:\.[0-9]{1,2})?)/i,
+    ),
+    parsePriceValue(
+      extractHtmlPatternString(
+        html,
+        /(?:\\?")formatted_current_price(?:\\?")\s*:\s*(?:\\?")([^"]+)(?:\\?")/i,
+      ),
+    ),
+  );
+}
+
+function extractHtmlPatternString(html: string, pattern: RegExp) {
+  const match = html.match(pattern);
+  return match?.[1] ? cleanText(match[1]) : undefined;
+}
+
+function extractHtmlPatternNumber(html: string, pattern: RegExp) {
+  const value = extractHtmlPatternString(html, pattern);
+  return value ? parsePriceValue(value) : undefined;
 }
 
 function parsePriceValue(value: unknown): number | undefined {
