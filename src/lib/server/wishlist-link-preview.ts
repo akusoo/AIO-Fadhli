@@ -38,9 +38,15 @@ export type WishLinkPreviewDiagnostic = {
   contentType?: string;
   detail?: string;
   elapsedMs: number;
+  fetchProfile?: string;
   reason: "content-type" | "http" | "network" | "timeout";
   status?: number;
   url: string;
+};
+
+type WishLinkFetchProfile = {
+  headers: Record<string, string>;
+  name: string;
 };
 
 class WishLinkPreviewRecoverableError extends Error {
@@ -170,6 +176,24 @@ async function fetchHtmlWithRedirects(initialUrl: URL) {
 }
 
 async function fetchHtmlDocument(initialUrl: URL) {
+  const diagnostics: WishLinkPreviewDiagnostic[] = [];
+
+  for (const profile of getFetchProfilesForHostname(initialUrl.hostname)) {
+    try {
+      return await fetchHtmlDocumentWithProfile(initialUrl, profile);
+    } catch (error) {
+      if (!(error instanceof WishLinkPreviewRecoverableError)) {
+        throw error;
+      }
+
+      diagnostics.push(...error.diagnostics);
+    }
+  }
+
+  throw new WishLinkPreviewRecoverableError("Link tidak bisa diambil sekarang.", diagnostics);
+}
+
+async function fetchHtmlDocumentWithProfile(initialUrl: URL, profile: WishLinkFetchProfile) {
   let currentUrl = initialUrl;
 
   for (let attempt = 0; attempt <= MAX_REDIRECTS; attempt += 1) {
@@ -182,7 +206,7 @@ async function fetchHtmlDocument(initialUrl: URL) {
     try {
       const response = await fetch(currentUrl, {
         cache: "no-store",
-        headers: BROWSER_LIKE_HEADERS,
+        headers: profile.headers,
         redirect: "manual",
         signal: controller.signal,
       });
@@ -202,6 +226,23 @@ async function fetchHtmlDocument(initialUrl: URL) {
       const html = await response.text();
       const finalUrl = response.url ? parsePublicHttpUrl(response.url) : currentUrl;
 
+      if (shouldRetryWithAlternateFetchProfile(currentUrl.hostname, html)) {
+        throw new WishLinkPreviewRecoverableError(
+          "Link perlu dicoba ulang dengan profil fetch lain.",
+          [
+            {
+              contentType,
+              detail: "blocked-document",
+              elapsedMs: Date.now() - startedAt,
+              fetchProfile: profile.name,
+              reason: "content-type",
+              status: response.status,
+              url: currentUrl.toString(),
+            },
+          ],
+        );
+      }
+
       if (canParseLinkDocument(response.status, contentType, html)) {
         return {
           finalUrl,
@@ -218,6 +259,7 @@ async function fetchHtmlDocument(initialUrl: URL) {
             contentType,
             detail: summarizeDocumentShape(html),
             elapsedMs: Date.now() - startedAt,
+            fetchProfile: profile.name,
             reason: response.ok ? "content-type" : "http",
             status: response.status,
             url: currentUrl.toString(),
@@ -235,6 +277,7 @@ async function fetchHtmlDocument(initialUrl: URL) {
           [
             {
               elapsedMs: Date.now() - startedAt,
+              fetchProfile: profile.name,
               reason: "timeout",
               url: currentUrl.toString(),
             },
@@ -246,6 +289,7 @@ async function fetchHtmlDocument(initialUrl: URL) {
         {
           detail: error instanceof Error ? error.message : String(error),
           elapsedMs: Date.now() - startedAt,
+          fetchProfile: profile.name,
           reason: "network",
           url: currentUrl.toString(),
         },
@@ -256,6 +300,38 @@ async function fetchHtmlDocument(initialUrl: URL) {
   }
 
   throw new Error("Redirect link terlalu banyak.");
+}
+
+function getFetchProfilesForHostname(hostname: string): WishLinkFetchProfile[] {
+  if (isShopeeHostname(hostname)) {
+    return [
+      {
+        headers: {
+          ...BROWSER_LIKE_HEADERS,
+          "User-Agent": "Twitterbot/1.0",
+        },
+        name: "twitterbot",
+      },
+      {
+        headers: {
+          ...BROWSER_LIKE_HEADERS,
+          "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+        },
+        name: "facebookexternalhit",
+      },
+      {
+        headers: BROWSER_LIKE_HEADERS,
+        name: "browser",
+      },
+    ];
+  }
+
+  return [
+    {
+      headers: BROWSER_LIKE_HEADERS,
+      name: "browser",
+    },
+  ];
 }
 
 function parsePublicHttpUrl(input: string) {
@@ -965,6 +1041,24 @@ function stripTrackingSearchParams(url: URL) {
   }
 
   return nextUrl;
+}
+
+function isShopeeHostname(hostname: string) {
+  const normalized = hostname.trim().toLowerCase();
+
+  return normalized === "shopee.co.id" || normalized.endsWith(".shopee.co.id");
+}
+
+function shouldRetryWithAlternateFetchProfile(hostname: string, html: string) {
+  if (!isShopeeHostname(hostname)) {
+    return false;
+  }
+
+  if (hasUsefulProductSignals(html)) {
+    return false;
+  }
+
+  return /halaman tidak tersedia|log in dan coba lagi|captcha/i.test(html);
 }
 
 function canParseLinkDocument(status: number, contentType: string, body: string) {

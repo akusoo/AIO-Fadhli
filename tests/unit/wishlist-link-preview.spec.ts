@@ -244,6 +244,72 @@ describe("wishlist link preview", () => {
     });
   });
 
+  it("retries Shopee with an alternate fetch profile until product metadata is available", async () => {
+    const requestedUserAgents: string[] = [];
+    const shopeeUrl =
+      "https://shopee.co.id/Jas-Hujan-Stelan-Series-Shine-Mantel-Baju-Celana-Raincoat-Set-Ultralight-Raincoat-Waterproof-i.286504037.29038098149";
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      const userAgent = headers["User-Agent"] ?? "";
+      requestedUserAgents.push(userAgent);
+
+      if (userAgent === "Twitterbot/1.0") {
+        return createResponse(
+          `
+            <html>
+              <head>
+                <title>Halaman Tidak Tersedia</title>
+              </head>
+              <body>Maaf, telah terjadi kesalahan. Silakan log in dan coba lagi.</body>
+            </html>
+          `,
+          shopeeUrl,
+        );
+      }
+
+      return createResponse(
+        `
+          <html>
+            <head>
+              <title>Jual Jas Hujan Stelan Series Shine / Mantel Baju Celana / Raincoat Set Ultralight / Raincoat Waterproof | Shopee Indonesia</title>
+              <meta property="og:title" content="Jual Jas Hujan Stelan Series Shine / Mantel Baju Celana / Raincoat Set Ultralight / Raincoat Waterproof | Shopee Indonesia" />
+              <meta property="og:image" content="https://down-id.img.susercontent.com/file/id-11134207-7ra0j-mbhg5v94na0412" />
+              <script type="application/ld+json">
+                {
+                  "@context": "http://schema.org",
+                  "@type": "Product",
+                  "name": "Jas Hujan Stelan Series Shine / Mantel Baju Celana / Raincoat Set Ultralight / Raincoat Waterproof",
+                  "image": "https://down-id.img.susercontent.com/file/id-11134207-7ra0j-mbhg5v94na0412",
+                  "offers": {
+                    "@type": "Offer",
+                    "price": "235000.00",
+                    "priceCurrency": "IDR"
+                  }
+                }
+              </script>
+            </head>
+          </html>
+        `,
+        shopeeUrl,
+      );
+    });
+
+    await expect(resolveWishLinkPreview(shopeeUrl)).resolves.toMatchObject({
+      imageUrl: "https://down-id.img.susercontent.com/file/id-11134207-7ra0j-mbhg5v94na0412",
+      siteName: "shopee.co.id",
+      sourceUrl: shopeeUrl,
+      targetPrice: 235_000,
+      title:
+        "Jual Jas Hujan Stelan Series Shine / Mantel Baju Celana / Raincoat Set Ultralight / Raincoat Waterproof | Shopee Indonesia",
+    });
+
+    expect(requestedUserAgents).toEqual([
+      "Twitterbot/1.0",
+      "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+    ]);
+  });
+
   it("retries with a stripped canonical URL when tracking params cause a timeout", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const requestedUrl = new URL(String(input));
