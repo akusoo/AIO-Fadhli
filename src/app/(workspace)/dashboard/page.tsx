@@ -413,8 +413,8 @@ function InlineActionButton({
       className={cn(
         "inline-flex min-h-10 items-center justify-center rounded-[16px] px-4 py-2 text-sm font-medium transition-all duration-150 disabled:pointer-events-none disabled:opacity-60",
         variant === "primary"
-          ? "bg-[var(--foreground)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-0.5 hover:bg-[var(--accent-strong)]"
-          : "border border-[var(--border)] bg-[rgba(255,255,255,0.76)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-white",
+          ? "border border-black bg-black text-white shadow-[var(--shadow-sm)] hover:-translate-y-0.5 hover:bg-black/90"
+          : "border border-black bg-black text-white hover:-translate-y-0.5 hover:bg-black/90",
       )}
       disabled={disabled}
       onClick={onClick}

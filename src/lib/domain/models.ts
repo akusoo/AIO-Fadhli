@@ -10,6 +10,8 @@ export type NavigationKey =
 
 export type TransactionKind = "income" | "expense" | "transfer";
 export type CategoryKind = "income" | "expense";
+export type AccountType = "cash" | "bank" | "e-wallet";
+export type BudgetCycleStatus = "active" | "completed" | "planned";
 export type DebtStatus = "healthy" | "watch" | "overdue" | "paid";
 export type DebtStatusSource = "auto" | "manual";
 export type TaskStatus = "todo" | "doing" | "done";
@@ -33,7 +35,7 @@ export type SessionUser = {
 export type Account = {
   id: string;
   name: string;
-  type: "cash" | "bank" | "e-wallet";
+  type: AccountType;
   balance: number;
 };
 
@@ -51,7 +53,7 @@ export type BudgetCycle = {
   targetAmount: number;
   spentAmount: number;
   incomeAmount: number;
-  status: "active" | "completed" | "planned";
+  status: BudgetCycleStatus;
 };
 
 export type Transaction = {
@@ -287,6 +289,25 @@ export type AddTransactionInput = {
   transferTargetAccountId?: string;
   sourceType?: "shopping" | "debt_installment";
   sourceId?: string;
+};
+
+export type AddAccountInput = {
+  name: string;
+  type: AccountType;
+  balance: number;
+};
+
+export type AddCategoryInput = {
+  name: string;
+  kind: CategoryKind;
+};
+
+export type AddBudgetCycleInput = {
+  label: string;
+  startOn: string;
+  endOn: string;
+  targetAmount: number;
+  status: BudgetCycleStatus;
 };
 
 export type AddRecurringPlanInput = {

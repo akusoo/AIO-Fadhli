@@ -90,10 +90,10 @@ function SortButton({
   return (
     <button
       className={cn(
-        "rounded-full px-3 py-2 text-xs font-medium transition-colors",
+        "rounded-full border border-black px-3 py-2 text-xs font-medium transition-colors",
         active
-          ? "bg-[var(--foreground)] text-white"
-          : "border border-[var(--border)] bg-white/80 text-[var(--foreground)] hover:bg-white",
+          ? "bg-black text-white"
+          : "bg-black/85 text-white hover:bg-black",
       )}
       onClick={onClick}
       type="button"

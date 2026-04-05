@@ -10,6 +10,9 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  AddAccountInput,
+  AddBudgetCycleInput,
+  AddCategoryInput,
   AddDebtInput,
   AddRecurringPlanInput,
   AddNoteInput,
@@ -51,6 +54,9 @@ import { createId, isoToday } from "@/lib/utils";
 type AppStateContextValue = {
   snapshot: AppSnapshot;
   isHydrated: boolean;
+  addAccount(input: AddAccountInput): Promise<string>;
+  addCategory(input: AddCategoryInput): Promise<string>;
+  addBudgetCycle(input: AddBudgetCycleInput): Promise<string>;
   addTransaction(input: AddTransactionInput): Promise<void>;
   addRecurringPlan(input: AddRecurringPlanInput): Promise<void>;
   addDebt(input: AddDebtInput): Promise<void>;
@@ -662,6 +668,74 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  async function addAccount(input: AddAccountInput) {
+    const clientId = createId("acct");
+
+    applyOptimisticMutation((draft) => {
+      draft.accounts.unshift({
+        id: clientId,
+        ...input,
+      });
+    });
+
+    await syncMutation("/api/finance/accounts", "POST", {
+      ...input,
+      clientId,
+    });
+
+    return clientId;
+  }
+
+  async function addCategory(input: AddCategoryInput) {
+    const clientId = createId("cat");
+
+    applyOptimisticMutation((draft) => {
+      draft.categories.unshift({
+        id: clientId,
+        ...input,
+      });
+    });
+
+    await syncMutation("/api/finance/categories", "POST", {
+      ...input,
+      clientId,
+    });
+
+    return clientId;
+  }
+
+  async function addBudgetCycle(input: AddBudgetCycleInput) {
+    const clientId = createId("cycle");
+
+    applyOptimisticMutation((draft) => {
+      if (input.status === "active") {
+        draft.budgetCycles.forEach((cycle) => {
+          if (cycle.status === "active") {
+            cycle.status = "completed";
+          }
+        });
+      }
+
+      draft.budgetCycles.unshift({
+        id: clientId,
+        label: input.label,
+        startOn: input.startOn,
+        endOn: input.endOn,
+        targetAmount: input.targetAmount,
+        spentAmount: 0,
+        incomeAmount: 0,
+        status: input.status,
+      });
+    });
+
+    await syncMutation("/api/finance/budget-cycles", "POST", {
+      ...input,
+      clientId,
+    });
+
+    return clientId;
+  }
+
   async function addRecurringPlan(input: AddRecurringPlanInput) {
     const clientId = createId("rec");
 
@@ -1186,6 +1260,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       value={{
         snapshot,
         isHydrated,
+        addAccount,
+        addCategory,
+        addBudgetCycle,
         addTransaction,
         addRecurringPlan,
         addDebt,

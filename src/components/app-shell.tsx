@@ -138,7 +138,7 @@ function MobileNav({
           );
         })}
         <button
-          className="flex flex-col items-center gap-1.5 rounded-[18px] px-2 py-2.5 text-[11px] font-medium text-[var(--muted)] transition-colors hover:bg-white"
+          className="flex flex-col items-center gap-1.5 rounded-[18px] border border-black bg-black px-2 py-2.5 text-[11px] font-medium text-white transition-colors hover:bg-black/90"
           onClick={onOpenMore}
           type="button"
         >

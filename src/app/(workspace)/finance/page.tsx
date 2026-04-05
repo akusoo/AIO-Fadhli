@@ -74,10 +74,10 @@ function TabButton({
   return (
     <button
       className={cn(
-        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+        "inline-flex items-center gap-2 rounded-full border border-black px-4 py-2 text-sm font-medium transition-colors",
         active
-          ? "bg-[var(--foreground)] text-white"
-          : "border border-[var(--border)] bg-white/75 text-[var(--foreground)] hover:bg-white",
+          ? "bg-black text-white"
+          : "bg-black/85 text-white hover:bg-black",
       )}
       onClick={onClick}
       type="button"
@@ -100,10 +100,10 @@ function PreviewToggle({
   return (
     <button
       className={cn(
-        "rounded-full px-3 py-2 text-xs font-medium transition-colors",
+        "rounded-full border border-black px-3 py-2 text-xs font-medium transition-colors",
         active
-          ? "bg-[var(--foreground)] text-white"
-          : "border border-[var(--border)] bg-white/80 text-[var(--foreground)] hover:bg-white",
+          ? "bg-black text-white"
+          : "bg-black/85 text-white hover:bg-black",
       )}
       onClick={onClick}
       type="button"
@@ -170,7 +170,14 @@ function ValueBar({
 }
 
 export default function FinancePage() {
-  const { snapshot, addRecurringPlan, addTransaction } = useAppState();
+  const {
+    snapshot,
+    addAccount,
+    addBudgetCycle,
+    addCategory,
+    addRecurringPlan,
+    addTransaction,
+  } = useAppState();
   const [activeTab, setActiveTab] = useState<FinanceTab>("overview");
   const [transactionTitle, setTransactionTitle] = useState("");
   const [transactionKind, setTransactionKind] = useState<"income" | "expense" | "transfer">(
@@ -215,6 +222,21 @@ export default function FinancePage() {
   );
   const [recurringMerchant, setRecurringMerchant] = useState("");
   const [recurringTags, setRecurringTags] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [accountType, setAccountType] = useState<"cash" | "bank" | "e-wallet">("bank");
+  const [accountBalance, setAccountBalance] = useState("");
+  const [accountFeedback, setAccountFeedback] = useState("");
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryKind, setCategoryKind] = useState<"income" | "expense">("expense");
+  const [categoryFeedback, setCategoryFeedback] = useState("");
+  const [cycleLabelInput, setCycleLabelInput] = useState("");
+  const [cycleStartOnInput, setCycleStartOnInput] = useState(isoToday());
+  const [cycleEndOnInput, setCycleEndOnInput] = useState(isoToday());
+  const [cycleTargetAmountInput, setCycleTargetAmountInput] = useState("");
+  const [cycleStatusInput, setCycleStatusInput] = useState<"active" | "planned" | "completed">(
+    "active",
+  );
+  const [cycleFeedback, setCycleFeedback] = useState("");
 
   const overview = useMemo(() => getFinanceOverview(snapshot, reportMonth), [snapshot, reportMonth]);
   const activeCycle = useMemo(() => getActiveCycle(snapshot), [snapshot]);
@@ -336,6 +358,63 @@ export default function FinancePage() {
     setRecurringMerchant("");
     setRecurringTags("");
     setShowRecurringForm(false);
+  }
+
+  async function handleAddAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const createdAccountId = await addAccount({
+      name: accountName.trim(),
+      type: accountType,
+      balance: parseNumberInput(accountBalance),
+    });
+
+    setAccountId(createdAccountId);
+    setRecurringAccountId(createdAccountId);
+    setAccountName("");
+    setAccountBalance("");
+    setAccountFeedback("Akun baru sudah masuk ke Finance dan langsung bisa dipakai.");
+  }
+
+  async function handleAddCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const createdCategoryId = await addCategory({
+      name: categoryName.trim(),
+      kind: categoryKind,
+    });
+
+    if (transactionKind !== "transfer" && transactionKind === categoryKind) {
+      setCategoryId(createdCategoryId);
+    }
+
+    if (recurringKind === categoryKind) {
+      setRecurringCategoryId(createdCategoryId);
+    }
+
+    setCategoryName("");
+    setCategoryFeedback("Kategori baru sudah siap dipakai untuk transaksi dan recurring.");
+  }
+
+  async function handleAddBudgetCycle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const createdCycleId = await addBudgetCycle({
+      label: cycleLabelInput.trim(),
+      startOn: cycleStartOnInput,
+      endOn: cycleEndOnInput,
+      targetAmount: parseNumberInput(cycleTargetAmountInput),
+      status: cycleStatusInput,
+    });
+
+    setCycleId(createdCycleId);
+    setCycleLabelInput("");
+    setCycleTargetAmountInput("");
+    setCycleFeedback(
+      cycleStatusInput === "active"
+        ? "Cycle baru aktif. Cycle aktif sebelumnya otomatis dipindahkan ke completed."
+        : "Cycle baru sudah ditambahkan ke daftar budget.",
+    );
   }
 
   const maxOverviewCategoryValue = Math.max(
@@ -1223,6 +1302,178 @@ export default function FinancePage() {
 
       {activeTab === "accounts" ? (
         <div className="space-y-6">
+          <SectionCard
+            description="Tambah akun, kategori, dan budget cycle baru dari satu tempat. Setelah disimpan, semua pilihan langsung muncul di form transaksi dan recurring."
+            title="Finance setup"
+          >
+            <div className="grid gap-4 xl:grid-cols-3">
+              <form
+                className="space-y-4 rounded-[24px] border border-[var(--border)] bg-white/82 p-5"
+                onSubmit={handleAddAccount}
+              >
+                <div className="space-y-1">
+                  <p className="font-semibold">Tambah akun baru</p>
+                  <p className="text-sm leading-6 text-[var(--muted)]">
+                    Cocok untuk rekening, cash, atau e-wallet baru.
+                  </p>
+                </div>
+                <Field label="Nama akun">
+                  <Input
+                    onChange={(event) => setAccountName(event.target.value)}
+                    placeholder="Contoh: Jago Operasional"
+                    required
+                    value={accountName}
+                  />
+                </Field>
+                <Field label="Tipe akun">
+                  <Select
+                    onChange={(event) =>
+                      setAccountType(event.target.value as "cash" | "bank" | "e-wallet")
+                    }
+                    value={accountType}
+                  >
+                    <option value="bank">Bank</option>
+                    <option value="cash">Cash</option>
+                    <option value="e-wallet">E-wallet</option>
+                  </Select>
+                </Field>
+                <Field label="Saldo awal">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
+                      Rp
+                    </span>
+                    <Input
+                      className="pl-11"
+                      inputMode="numeric"
+                      onChange={(event) => setAccountBalance(event.target.value.replace(/\D/g, ""))}
+                      placeholder="0"
+                      type="text"
+                      value={formatNumberInput(accountBalance)}
+                    />
+                  </div>
+                </Field>
+                <ActionButton type="submit">Tambah akun</ActionButton>
+                {accountFeedback ? (
+                  <p className="rounded-2xl bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
+                    {accountFeedback}
+                  </p>
+                ) : null}
+              </form>
+
+              <form
+                className="space-y-4 rounded-[24px] border border-[var(--border)] bg-white/82 p-5"
+                onSubmit={handleAddCategory}
+              >
+                <div className="space-y-1">
+                  <p className="font-semibold">Tambah kategori baru</p>
+                  <p className="text-sm leading-6 text-[var(--muted)]">
+                    Kategori baru langsung tersedia di transaksi dan recurring.
+                  </p>
+                </div>
+                <Field label="Nama kategori">
+                  <Input
+                    onChange={(event) => setCategoryName(event.target.value)}
+                    placeholder="Contoh: Kesehatan"
+                    required
+                    value={categoryName}
+                  />
+                </Field>
+                <Field label="Jenis kategori">
+                  <Select
+                    onChange={(event) =>
+                      setCategoryKind(event.target.value as "income" | "expense")
+                    }
+                    value={categoryKind}
+                  >
+                    <option value="expense">Pengeluaran</option>
+                    <option value="income">Pemasukan</option>
+                  </Select>
+                </Field>
+                <ActionButton type="submit">Tambah kategori</ActionButton>
+                {categoryFeedback ? (
+                  <p className="rounded-2xl bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
+                    {categoryFeedback}
+                  </p>
+                ) : null}
+              </form>
+
+              <form
+                className="space-y-4 rounded-[24px] border border-[var(--border)] bg-white/82 p-5"
+                onSubmit={handleAddBudgetCycle}
+              >
+                <div className="space-y-1">
+                  <p className="font-semibold">Tambah budget cycle baru</p>
+                  <p className="text-sm leading-6 text-[var(--muted)]">
+                    Saat membuat cycle aktif baru, cycle aktif lama akan otomatis selesai.
+                  </p>
+                </div>
+                <Field label="Label cycle">
+                  <Input
+                    onChange={(event) => setCycleLabelInput(event.target.value)}
+                    placeholder="Contoh: Siklus 1-7 April"
+                    required
+                    value={cycleLabelInput}
+                  />
+                </Field>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field label="Mulai">
+                    <Input
+                      onChange={(event) => setCycleStartOnInput(event.target.value)}
+                      required
+                      type="date"
+                      value={cycleStartOnInput}
+                    />
+                  </Field>
+                  <Field label="Selesai">
+                    <Input
+                      onChange={(event) => setCycleEndOnInput(event.target.value)}
+                      required
+                      type="date"
+                      value={cycleEndOnInput}
+                    />
+                  </Field>
+                </div>
+                <Field label="Target budget">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
+                      Rp
+                    </span>
+                    <Input
+                      className="pl-11"
+                      inputMode="numeric"
+                      onChange={(event) =>
+                        setCycleTargetAmountInput(event.target.value.replace(/\D/g, ""))
+                      }
+                      placeholder="0"
+                      type="text"
+                      value={formatNumberInput(cycleTargetAmountInput)}
+                    />
+                  </div>
+                </Field>
+                <Field label="Status">
+                  <Select
+                    onChange={(event) =>
+                      setCycleStatusInput(
+                        event.target.value as "active" | "planned" | "completed",
+                      )
+                    }
+                    value={cycleStatusInput}
+                  >
+                    <option value="active">Active</option>
+                    <option value="planned">Planned</option>
+                    <option value="completed">Completed</option>
+                  </Select>
+                </Field>
+                <ActionButton type="submit">Tambah cycle</ActionButton>
+                {cycleFeedback ? (
+                  <p className="rounded-2xl bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
+                    {cycleFeedback}
+                  </p>
+                ) : null}
+              </form>
+            </div>
+          </SectionCard>
+
           <SectionCard
             description="Accounts tetap fokus ke cash positions, bukan asset/investment tracking."
             title="Account balances"

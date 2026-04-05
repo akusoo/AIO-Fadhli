@@ -78,11 +78,11 @@ export function ActionButton({
     "inline-flex min-h-10 items-center justify-center gap-2 rounded-[18px] px-4 py-2.5 text-sm font-medium transition-all duration-150",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(26,130,121,0.24)]",
     variant === "primary" &&
-      "bg-[var(--foreground)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-0.5 hover:bg-[var(--accent-strong)]",
+      "border border-black bg-black text-white shadow-[var(--shadow-sm)] hover:-translate-y-0.5 hover:bg-black/90",
     variant === "secondary" &&
-      "border border-[var(--border)] bg-[var(--surface-strong)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-white",
+      "border border-black bg-black text-white hover:-translate-y-0.5 hover:bg-black/90",
     variant === "ghost" &&
-      "text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] hover:text-[var(--foreground)]",
+      "border border-black bg-black/85 text-white hover:bg-black",
     className,
   );
 

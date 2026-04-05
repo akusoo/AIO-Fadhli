@@ -1,5 +1,8 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type {
+  AddAccountInput,
+  AddBudgetCycleInput,
+  AddCategoryInput,
   AddDebtInput,
   AddTransactionInput,
   AppSnapshot,
@@ -447,6 +450,74 @@ export async function ensureUserBootstrap(supabase: SupabaseClient, user: User) 
 
     raiseIfError(error);
   }
+}
+
+export async function createAccount(
+  supabase: SupabaseClient,
+  userId: string,
+  input: AddAccountInput,
+  accountId = createId("acct"),
+) {
+  const { error } = await supabase.from("accounts").insert({
+    id: accountId,
+    user_id: userId,
+    name: input.name,
+    type: input.type,
+    balance: input.balance,
+  });
+
+  raiseIfError(error);
+  return accountId;
+}
+
+export async function createCategory(
+  supabase: SupabaseClient,
+  userId: string,
+  input: AddCategoryInput,
+  categoryId = createId("cat"),
+) {
+  const { error } = await supabase.from("categories").insert({
+    id: categoryId,
+    user_id: userId,
+    name: input.name,
+    kind: input.kind,
+  });
+
+  raiseIfError(error);
+  return categoryId;
+}
+
+export async function createBudgetCycle(
+  supabase: SupabaseClient,
+  userId: string,
+  input: AddBudgetCycleInput,
+  cycleId = createId("cycle"),
+) {
+  if (input.status === "active") {
+    const { error: resetError } = await supabase
+      .from("budget_cycles")
+      .update({ status: "completed" })
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .is("deleted_at", null);
+
+    raiseIfError(resetError);
+  }
+
+  const { error } = await supabase.from("budget_cycles").insert({
+    id: cycleId,
+    user_id: userId,
+    label: input.label,
+    start_on: input.startOn,
+    end_on: input.endOn,
+    target_amount: input.targetAmount,
+    spent_amount: 0,
+    income_amount: 0,
+    status: input.status,
+  });
+
+  raiseIfError(error);
+  return cycleId;
 }
 
 export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Promise<AppSnapshot> {

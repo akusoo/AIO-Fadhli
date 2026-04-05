@@ -5,14 +5,13 @@ import { ActionButton, Input, SectionCard } from "@/components/ui";
 import { hasSupabaseEnv } from "@/lib/services/supabase-env";
 import { createSupabaseBrowser } from "@/lib/services/supabase";
 
-export function SignInForm() {
+export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isConfigured = useMemo(() => hasSupabaseEnv(), []);
 
-  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!isConfigured) {
@@ -25,18 +24,21 @@ export function SignInForm() {
 
     try {
       const supabase = createSupabaseBrowser();
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
       });
 
       if (error) {
         throw error;
       }
 
-      window.location.assign("/dashboard");
+      setFeedback(
+        "Link reset password sudah dikirim. Buka email Anda, lalu lanjutkan dari link tersebut untuk membuat password baru.",
+      );
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Gagal masuk dengan password.");
+      setFeedback(
+        error instanceof Error ? error.message : "Gagal mengirim email reset password.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -45,14 +47,14 @@ export function SignInForm() {
   return (
     <SectionCard
       className="max-w-lg"
-      description="Masuk memakai email dan password biasa. Kalau akun lama Anda dulu dibuat lewat magic link, buat password dulu lewat email reset."
-      title="Masuk ke AIO Tracker"
+      description="Khusus untuk akun lama yang dulu masuk lewat magic link atau akun yang belum punya password."
+      title="Buat password akun lama"
     >
-      <form className="space-y-4" onSubmit={handlePasswordSubmit}>
+      <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-1">
-          <p className="text-sm font-semibold text-[var(--foreground)]">Email dan password</p>
+          <p className="text-sm font-semibold text-[var(--foreground)]">Kirim link reset</p>
           <p className="text-sm leading-6 text-[var(--muted)]">
-            Pakai akun yang memang sudah punya kredensial, atau set password dulu untuk akun lama.
+            Link ini akan membawa Anda ke halaman untuk membuat password baru.
           </p>
         </div>
 
@@ -68,18 +70,6 @@ export function SignInForm() {
           />
         </label>
 
-        <label className="block space-y-2 text-sm">
-          <span className="font-medium text-[var(--foreground)]">Password</span>
-          <Input
-            autoComplete="current-password"
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Masukkan password akun Anda"
-            required
-            type="password"
-            value={password}
-          />
-        </label>
-
         {feedback ? (
           <p className="rounded-[18px] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]">
             {feedback}
@@ -88,13 +78,10 @@ export function SignInForm() {
 
         <div className="flex flex-wrap gap-3">
           <ActionButton type="submit">
-            {isSubmitting ? "Masuk..." : "Masuk"}
+            {isSubmitting ? "Mengirim..." : "Kirim link reset"}
           </ActionButton>
-          <ActionButton href="/auth/forgot-password" variant="secondary">
-            Buat password akun lama
-          </ActionButton>
-          <ActionButton href="/auth/sign-up" variant="ghost">
-            Buat akun baru
+          <ActionButton href="/auth/sign-in" variant="ghost">
+            Kembali ke login
           </ActionButton>
         </div>
       </form>
