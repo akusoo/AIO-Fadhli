@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState, type FormEvent } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   CalendarRange,
   ChartColumn,
@@ -67,6 +67,7 @@ type FinanceTab =
   | "accounts";
 type PreviewScope = "cycle" | "month";
 type FinanceSettingsSection = "accounts" | "categories" | "cycles";
+type QuickAddNoticeTone = "success" | "error";
 
 const financeTabs: Array<{ id: FinanceTab; label: string; icon: typeof WalletCards }> = [
   { id: "overview", label: "Overview", icon: WalletCards },
@@ -247,6 +248,7 @@ export default function FinancePage() {
   const {
     snapshot,
     addAccount,
+    updateAccount,
     addInvestment,
     addInvestmentValuation,
     addBudgetCycle,
@@ -277,6 +279,10 @@ export default function FinancePage() {
   const [tags, setTags] = useState("");
   const [note, setNote] = useState("");
   const [transactionFeedback, setTransactionFeedback] = useState("");
+  const [quickAddNotice, setQuickAddNotice] = useState<{
+    message: string;
+    tone: QuickAddNoticeTone;
+  } | null>(null);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [filterKind, setFilterKind] = useState("all");
@@ -310,6 +316,7 @@ export default function FinancePage() {
   const [accountType, setAccountType] = useState<"cash" | "bank" | "e-wallet">("bank");
   const [accountBalance, setAccountBalance] = useState("");
   const [accountFeedback, setAccountFeedback] = useState("");
+  const [editingAccountId, setEditingAccountId] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [categoryKind, setCategoryKind] = useState<"income" | "expense">("expense");
   const [categoryFeedback, setCategoryFeedback] = useState("");
@@ -484,20 +491,30 @@ export default function FinancePage() {
         transactionKind === "transfer" ? transferTargetAccountId || undefined : undefined,
     } as const;
 
-    if (editingTransactionId) {
-      await updateTransaction({
-        transactionId: editingTransactionId,
-        ...transactionInput,
-      });
+    try {
+      if (editingTransactionId) {
+        await updateTransaction({
+          transactionId: editingTransactionId,
+          ...transactionInput,
+        });
+        resetTransactionForm();
+        const message = "Transaksi berhasil diperbarui dan saldo langsung disinkronkan ulang.";
+        setTransactionFeedback(message);
+        showQuickAddNotice(message, "success");
+        return;
+      }
+
+      await addTransaction(transactionInput);
+
       resetTransactionForm();
-      setTransactionFeedback("Transaksi berhasil diperbarui dan saldo langsung disinkronkan ulang.");
-      return;
+      const message = "Transaksi tersimpan dan seluruh section finance langsung ikut terbarui.";
+      setTransactionFeedback(message);
+      showQuickAddNotice(message, "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Gagal menyimpan transaksi.";
+      setTransactionFeedback(message);
+      showQuickAddNotice(message, "error");
     }
-
-    await addTransaction(transactionInput);
-
-    resetTransactionForm();
-    setTransactionFeedback("Transaksi tersimpan dan seluruh section finance langsung ikut terbarui.");
   }
 
   async function handleDeleteTransaction(transactionId: string) {
@@ -559,17 +576,50 @@ export default function FinancePage() {
   async function handleAddAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const createdAccountId = await addAccount({
+    const accountInput = {
       name: accountName.trim(),
       type: accountType,
       balance: parseNumberInput(accountBalance),
-    });
+    } as const;
+
+    if (editingAccountId) {
+      await updateAccount({
+        accountId: editingAccountId,
+        ...accountInput,
+      });
+      resetAccountForm();
+      setAccountFeedback("Akun berhasil diperbarui.");
+      return;
+    }
+
+    const createdAccountId = await addAccount(accountInput);
 
     setAccountId(createdAccountId);
     setRecurringAccountId(createdAccountId);
     setAccountName("");
     setAccountBalance("");
     setAccountFeedback("Akun baru sudah masuk ke Finance dan langsung bisa dipakai.");
+  }
+
+  function resetAccountForm() {
+    setEditingAccountId("");
+    setAccountName("");
+    setAccountType("bank");
+    setAccountBalance("");
+  }
+
+  function startEditAccount(accountIdToEdit: string) {
+    const account = snapshot.accounts.find((item) => item.id === accountIdToEdit);
+
+    if (!account) {
+      return;
+    }
+
+    setEditingAccountId(account.id);
+    setAccountName(account.name);
+    setAccountType(account.type);
+    setAccountBalance(String(account.balance));
+    setAccountFeedback(`Mode edit aktif untuk akun \"${account.name}\".`);
   }
 
   async function handleAddCategory(event: FormEvent<HTMLFormElement>) {
@@ -805,8 +855,42 @@ export default function FinancePage() {
     [snapshot.categories],
   );
 
+  useEffect(() => {
+    if (!quickAddNotice) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setQuickAddNotice(null);
+    }, 3200);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [quickAddNotice]);
+
+  function showQuickAddNotice(message: string, tone: QuickAddNoticeTone) {
+    setQuickAddNotice({ message, tone });
+  }
+
   return (
     <div className="space-y-6">
+      {quickAddNotice ? (
+        <div className="pointer-events-none fixed right-5 top-5 z-50 max-w-sm animate-[fade-in_180ms_ease-out]">
+          <div
+            className={cn(
+              "rounded-2xl border px-4 py-3 text-sm shadow-[0_20px_50px_rgba(18,26,32,0.18)] backdrop-blur",
+              quickAddNotice.tone === "success"
+                ? "border-emerald-200 bg-emerald-50/95 text-emerald-900"
+                : "border-rose-200 bg-rose-50/95 text-rose-900",
+            )}
+            role="status"
+          >
+            {quickAddNotice.message}
+          </div>
+        </div>
+      ) : null}
+
       <PageHeader
         eyebrow="Core flow / finance redesign"
         title="Finance yang lebih kaya, tetap terasa operasional."
@@ -2182,9 +2266,13 @@ export default function FinancePage() {
                         onSubmit={handleAddAccount}
                       >
                         <div className="space-y-1">
-                          <p className="font-semibold">Tambah akun baru</p>
+                          <p className="font-semibold">
+                            {editingAccountId ? "Edit akun" : "Tambah akun baru"}
+                          </p>
                           <p className="text-sm leading-6 text-[var(--muted)]">
-                            Cocok untuk rekening, cash, atau e-wallet baru.
+                            {editingAccountId
+                              ? "Perbarui nama, tipe, atau saldo akun yang sudah ada."
+                              : "Cocok untuk rekening, cash, atau e-wallet baru."}
                           </p>
                         </div>
                         <Field label="Nama akun">
@@ -2224,7 +2312,16 @@ export default function FinancePage() {
                             />
                           </div>
                         </Field>
-                        <ActionButton type="submit">Tambah akun</ActionButton>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <ActionButton type="submit">
+                            {editingAccountId ? "Update akun" : "Tambah akun"}
+                          </ActionButton>
+                          {editingAccountId ? (
+                            <ActionButton onClick={resetAccountForm} type="button" variant="ghost">
+                              Batal edit
+                            </ActionButton>
+                          ) : null}
+                        </div>
                         {accountFeedback ? (
                           <p className="rounded-2xl bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
                             {accountFeedback}
@@ -2258,6 +2355,14 @@ export default function FinancePage() {
                                 <p className="mt-2 text-sm text-[var(--muted)]">
                                   {share.toFixed(1)}% dari total available cash
                                 </p>
+                                <div className="mt-4">
+                                  <ActionButton
+                                    onClick={() => startEditAccount(account.id)}
+                                    variant="ghost"
+                                  >
+                                    Edit akun
+                                  </ActionButton>
+                                </div>
                               </div>
                             );
                           })}

@@ -380,6 +380,13 @@ export type AddAccountInput = {
   balance: number;
 };
 
+export type UpdateAccountInput = {
+  accountId: string;
+  name: string;
+  type: AccountType;
+  balance: number;
+};
+
 export type AddCategoryInput = {
   name: string;
   kind: CategoryKind;

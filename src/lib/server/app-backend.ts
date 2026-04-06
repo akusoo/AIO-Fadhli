@@ -15,6 +15,7 @@ import type {
   UpdateDebtInstallmentStatusInput,
   UpdateInvestmentInput,
   UpdateBudgetCycleInput,
+  UpdateAccountInput,
   UpdateTransactionInput,
 } from "@/lib/domain/models";
 import {
@@ -525,6 +526,25 @@ export async function createAccount(
 
   raiseIfError(error);
   return accountId;
+}
+
+export async function updateAccount(
+  supabase: SupabaseClient,
+  userId: string,
+  input: UpdateAccountInput,
+) {
+  const { error } = await supabase
+    .from("accounts")
+    .update({
+      name: input.name,
+      type: input.type,
+      balance: input.balance,
+    })
+    .eq("id", input.accountId)
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+
+  raiseIfError(error);
 }
 
 export async function createCategory(

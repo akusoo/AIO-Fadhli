@@ -17,6 +17,7 @@ import type {
   AddInvestmentInput,
   AddInvestmentValuationInput,
   UpdateBudgetCycleInput,
+  UpdateAccountInput,
   AddRecurringPlanInput,
   AddNoteInput,
   AddProjectInput,
@@ -60,6 +61,7 @@ type AppStateContextValue = {
   snapshot: AppSnapshot;
   isHydrated: boolean;
   addAccount(input: AddAccountInput): Promise<string>;
+  updateAccount(input: UpdateAccountInput): Promise<void>;
   addCategory(input: AddCategoryInput): Promise<string>;
   addBudgetCycle(input: AddBudgetCycleInput): Promise<string>;
   updateBudgetCycle(input: UpdateBudgetCycleInput): Promise<void>;
@@ -934,6 +936,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return clientId;
   }
 
+  async function updateAccount(input: UpdateAccountInput) {
+    applyOptimisticMutation((draft) => {
+      const account = draft.accounts.find((item) => item.id === input.accountId);
+
+      if (!account) {
+        return;
+      }
+
+      account.name = input.name;
+      account.type = input.type;
+      account.balance = input.balance;
+    });
+
+    await syncMutation(`/api/finance/accounts/${input.accountId}`, "PATCH", {
+      name: input.name,
+      type: input.type,
+      balance: input.balance,
+    });
+  }
+
   async function addCategory(input: AddCategoryInput) {
     const clientId = createId("cat");
 
@@ -1600,6 +1622,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         snapshot,
         isHydrated,
         addAccount,
+        updateAccount,
         addCategory,
         addBudgetCycle,
         updateBudgetCycle,
