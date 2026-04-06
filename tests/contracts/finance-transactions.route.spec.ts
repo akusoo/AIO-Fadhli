@@ -6,11 +6,13 @@ const {
   buildAppSnapshotMock,
   createTransactionWithSideEffectsMock,
   updateTransactionWithSideEffectsMock,
+  deleteTransactionWithSideEffectsMock,
 } = vi.hoisted(() => ({
   getAuthedRouteContextMock: vi.fn(),
   buildAppSnapshotMock: vi.fn(),
   createTransactionWithSideEffectsMock: vi.fn(),
   updateTransactionWithSideEffectsMock: vi.fn(),
+  deleteTransactionWithSideEffectsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/server/routes", async () => {
@@ -25,10 +27,11 @@ vi.mock("@/lib/server/app-backend", () => ({
   buildAppSnapshot: buildAppSnapshotMock,
   createTransactionWithSideEffects: createTransactionWithSideEffectsMock,
   updateTransactionWithSideEffects: updateTransactionWithSideEffectsMock,
+  deleteTransactionWithSideEffects: deleteTransactionWithSideEffectsMock,
 }));
 
 import { POST } from "@/app/api/finance/transactions/route";
-import { PATCH } from "@/app/api/finance/transactions/[transactionId]/route";
+import { DELETE, PATCH } from "@/app/api/finance/transactions/[transactionId]/route";
 
 describe("POST /api/finance/transactions", () => {
   beforeEach(() => {
@@ -36,6 +39,7 @@ describe("POST /api/finance/transactions", () => {
     buildAppSnapshotMock.mockReset();
     createTransactionWithSideEffectsMock.mockReset();
     updateTransactionWithSideEffectsMock.mockReset();
+    deleteTransactionWithSideEffectsMock.mockReset();
   });
 
   it("forwards auth guard responses", async () => {
@@ -159,6 +163,62 @@ describe("POST /api/finance/transactions", () => {
     );
     await expect(response.json()).resolves.toEqual({
       snapshot: { transactions: [{ id: "trx-1", title: "Belanja baru" }] },
+    });
+  });
+
+  it("deletes transactions and rebuilds snapshot", async () => {
+    getAuthedRouteContextMock.mockResolvedValue({
+      supabase: {},
+      user: { id: "user-1" },
+      applyCookies: vi.fn(),
+    });
+    deleteTransactionWithSideEffectsMock.mockResolvedValue(undefined);
+    buildAppSnapshotMock.mockResolvedValue({ transactions: [] });
+
+    const response = await DELETE(
+      new Request("http://localhost/api/finance/transactions/trx-1", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ transactionId: "trx-1" }) },
+    );
+
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected a response");
+    }
+
+    expect(response.status).toBe(200);
+    expect(deleteTransactionWithSideEffectsMock).toHaveBeenCalledWith({}, "user-1", "trx-1");
+    await expect(response.json()).resolves.toEqual({
+      snapshot: { transactions: [] },
+    });
+  });
+
+  it("returns 400 when deleting transactions fails", async () => {
+    getAuthedRouteContextMock.mockResolvedValue({
+      supabase: {},
+      user: { id: "user-1" },
+      applyCookies: vi.fn(),
+    });
+    deleteTransactionWithSideEffectsMock.mockRejectedValue(
+      new Error("Transaksi sinkron tidak bisa dihapus"),
+    );
+
+    const response = await DELETE(
+      new Request("http://localhost/api/finance/transactions/trx-source", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ transactionId: "trx-source" }) },
+    );
+
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected a response");
+    }
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Transaksi sinkron tidak bisa dihapus",
     });
   });
 });

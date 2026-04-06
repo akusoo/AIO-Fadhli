@@ -231,6 +231,7 @@ export default function FinancePage() {
     deleteInvestment,
     updateBudgetCycle,
     updateTransaction,
+    deleteTransaction,
     updateInvestment,
     addRecurringPlan,
     addTransaction,
@@ -474,6 +475,37 @@ export default function FinancePage() {
 
     resetTransactionForm();
     setTransactionFeedback("Transaksi tersimpan dan seluruh section finance langsung ikut terbarui.");
+  }
+
+  async function handleDeleteTransaction(transactionId: string) {
+    const transaction = snapshot.transactions.find((item) => item.id === transactionId);
+
+    if (!transaction) {
+      return;
+    }
+
+    if (transaction.sourceType) {
+      setTransactionFeedback(
+        `Transaksi ini sinkron dari ${transactionSourceLabel(transaction.sourceType)}. Hapus dari modul sumbernya supaya data tetap konsisten.`,
+      );
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Hapus transaksi "${transaction.title}"? Saldo akun dan budget cycle akan disesuaikan otomatis.`,
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    await deleteTransaction(transactionId);
+
+    if (editingTransactionId === transactionId) {
+      resetTransactionForm();
+    }
+
+    setTransactionFeedback("Transaksi dihapus dan saldo finance sudah dikoreksi otomatis.");
   }
 
   async function handleRecurringSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1277,12 +1309,20 @@ export default function FinancePage() {
                               Kelola transaksi ini dari modul sumber.
                             </p>
                           ) : (
-                            <ActionButton
-                              onClick={() => startEditTransaction(transaction.id)}
-                              variant="ghost"
-                            >
-                              Edit
-                            </ActionButton>
+                            <>
+                              <ActionButton
+                                onClick={() => startEditTransaction(transaction.id)}
+                                variant="ghost"
+                              >
+                                Edit
+                              </ActionButton>
+                              <ActionButton
+                                onClick={() => void handleDeleteTransaction(transaction.id)}
+                                variant="ghost"
+                              >
+                                Hapus
+                              </ActionButton>
+                            </>
                           )}
                         </div>
                       </div>

@@ -65,6 +65,7 @@ type AppStateContextValue = {
   updateBudgetCycle(input: UpdateBudgetCycleInput): Promise<void>;
   addTransaction(input: AddTransactionInput): Promise<void>;
   updateTransaction(input: UpdateTransactionInput): Promise<void>;
+  deleteTransaction(transactionId: string): Promise<void>;
   addInvestment(input: AddInvestmentInput): Promise<void>;
   updateInvestment(input: UpdateInvestmentInput): Promise<void>;
   deleteInvestment(investmentId: string): Promise<void>;
@@ -753,6 +754,49 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
 
     await syncMutation(`/api/finance/transactions/${input.transactionId}`, "PATCH", input);
+  }
+
+  async function deleteTransaction(transactionId: string) {
+    const existingTransaction = snapshot.transactions.find((item) => item.id === transactionId);
+
+    if (!existingTransaction) {
+      throw new Error("Transaksi tidak ditemukan.");
+    }
+
+    if (existingTransaction.sourceType) {
+      throw new Error(
+        "Transaksi sinkron dari modul lain belum bisa dihapus dari Finance. Hapus dari modul sumbernya.",
+      );
+    }
+
+    applyOptimisticMutation((draft) => {
+      const transaction = draft.transactions.find((item) => item.id === transactionId);
+
+      if (!transaction || transaction.sourceType) {
+        return;
+      }
+
+      const transactionInput: AddTransactionInput = {
+        title: transaction.title,
+        kind: transaction.kind,
+        amount: transaction.amount,
+        occurredOn: transaction.occurredOn,
+        accountId: transaction.accountId,
+        categoryId: transaction.categoryId,
+        cycleId: transaction.cycleId,
+        merchant: transaction.merchant,
+        tags: transaction.tags ?? [],
+        note: transaction.note,
+        transferTargetAccountId: transaction.transferTargetAccountId,
+      };
+
+      revertAccountBalances(draft, transactionInput);
+      revertCycleSpend(draft, transactionInput);
+
+      draft.transactions = draft.transactions.filter((item) => item.id !== transactionId);
+    });
+
+    await syncMutation(`/api/finance/transactions/${transactionId}`, "DELETE");
   }
 
   async function addInvestment(input: AddInvestmentInput) {
@@ -1520,6 +1564,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         updateBudgetCycle,
         addTransaction,
         updateTransaction,
+        deleteTransaction,
         addInvestment,
         updateInvestment,
         deleteInvestment,

@@ -1253,6 +1253,65 @@ export async function updateTransactionWithSideEffects(
   }
 }
 
+export async function deleteTransactionWithSideEffects(
+  supabase: SupabaseClient,
+  userId: string,
+  transactionId: string,
+) {
+  const { data: existing, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("id", transactionId)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  raiseIfError(error);
+
+  if (!existing) {
+    throw new Error("Transaksi tidak ditemukan.");
+  }
+
+  if (existing.source_type) {
+    throw new Error(
+      `Transaksi ini sinkron dari ${describeTransactionSource(existing.source_type)}. Hapus dari modul sumber supaya data tetap konsisten.`,
+    );
+  }
+
+  const existingInput = transactionRowToInput(existing);
+  let accountReverted = false;
+  let cycleReverted = false;
+
+  try {
+    await revertAccountBalances(supabase, existingInput);
+    accountReverted = true;
+
+    await revertCycleAmounts(supabase, existingInput);
+    cycleReverted = true;
+
+    const { error: deleteError } = await supabase
+      .from("transactions")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", transactionId)
+      .eq("user_id", userId)
+      .is("deleted_at", null);
+
+    raiseIfError(deleteError);
+  } catch (error) {
+    try {
+      if (cycleReverted) {
+        await adjustCycleAmounts(supabase, existingInput);
+      }
+
+      if (accountReverted) {
+        await adjustAccountBalances(supabase, existingInput);
+      }
+    } catch {}
+
+    throw error;
+  }
+}
+
 export async function createInvestmentWithSideEffects(
   supabase: SupabaseClient,
   userId: string,
