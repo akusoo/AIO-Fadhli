@@ -354,6 +354,26 @@ function revertCycleSpend(snapshot: AppSnapshot, input: AddTransactionInput) {
   }
 }
 
+function isSourceTransactionStillAvailable(snapshot: AppSnapshot, transaction: AppSnapshot["transactions"][number]) {
+  if (!transaction.sourceType || !transaction.sourceId) {
+    return false;
+  }
+
+  if (transaction.sourceType === "shopping") {
+    return snapshot.shoppingItems.some((item) => item.id === transaction.sourceId);
+  }
+
+  if (transaction.sourceType === "debt_installment") {
+    return snapshot.debtInstallments.some((item) => item.id === transaction.sourceId);
+  }
+
+  if (transaction.sourceType === "investment") {
+    return snapshot.investments.some((item) => item.id === transaction.sourceId);
+  }
+
+  return false;
+}
+
 function getDefaultExpenseCategoryId(snapshot: AppSnapshot) {
   return (
     snapshot.categories.find((item) => item.id === "cat-installment")?.id ??
@@ -763,7 +783,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Transaksi tidak ditemukan.");
     }
 
-    if (existingTransaction.sourceType) {
+    if (
+      existingTransaction.sourceType &&
+      isSourceTransactionStillAvailable(snapshot, existingTransaction)
+    ) {
       throw new Error(
         "Transaksi sinkron dari modul lain belum bisa dihapus dari Finance. Hapus dari modul sumbernya.",
       );
@@ -772,7 +795,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     applyOptimisticMutation((draft) => {
       const transaction = draft.transactions.find((item) => item.id === transactionId);
 
-      if (!transaction || transaction.sourceType) {
+      if (
+        !transaction ||
+        (transaction.sourceType && isSourceTransactionStillAvailable(draft, transaction))
+      ) {
         return;
       }
 
@@ -1435,6 +1461,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   async function deleteShoppingItem(itemId: string) {
     applyOptimisticMutation((draft) => {
+      const linkedTransactions = draft.transactions.filter(
+        (transaction) =>
+          transaction.sourceType === "shopping" && transaction.sourceId === itemId,
+      );
+
+      linkedTransactions.forEach((transaction) => {
+        revertAccountBalances(draft, transaction);
+        revertCycleSpend(draft, transaction);
+      });
+
+      draft.transactions = draft.transactions.filter(
+        (transaction) =>
+          !(transaction.sourceType === "shopping" && transaction.sourceId === itemId),
+      );
+
       draft.shoppingItems = draft.shoppingItems.filter((item) => item.id !== itemId);
     });
 

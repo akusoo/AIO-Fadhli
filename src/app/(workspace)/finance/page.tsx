@@ -111,6 +111,29 @@ function transactionSourceLabel(sourceType?: "shopping" | "debt_installment" | "
   }[sourceType ?? "shopping"];
 }
 
+function isTransactionSourceStillAvailable(
+  snapshot: ReturnType<typeof useAppState>["snapshot"],
+  transaction: ReturnType<typeof useAppState>["snapshot"]["transactions"][number],
+) {
+  if (!transaction.sourceType || !transaction.sourceId) {
+    return false;
+  }
+
+  if (transaction.sourceType === "shopping") {
+    return snapshot.shoppingItems.some((item) => item.id === transaction.sourceId);
+  }
+
+  if (transaction.sourceType === "debt_installment") {
+    return snapshot.debtInstallments.some((item) => item.id === transaction.sourceId);
+  }
+
+  if (transaction.sourceType === "investment") {
+    return snapshot.investments.some((item) => item.id === transaction.sourceId);
+  }
+
+  return false;
+}
+
 function TabButton({
   active,
   icon: Icon,
@@ -484,7 +507,7 @@ export default function FinancePage() {
       return;
     }
 
-    if (transaction.sourceType) {
+    if (transaction.sourceType && isTransactionSourceStillAvailable(snapshot, transaction)) {
       setTransactionFeedback(
         `Transaksi ini sinkron dari ${transactionSourceLabel(transaction.sourceType)}. Hapus dari modul sumbernya supaya data tetap konsisten.`,
       );
@@ -1304,18 +1327,20 @@ export default function FinancePage() {
                           </p>
                         ) : null}
                         <div className="mt-3 flex flex-wrap gap-2 md:justify-end">
-                          {transaction.sourceType ? (
+                          {transaction.sourceType && isTransactionSourceStillAvailable(snapshot, transaction) ? (
                             <p className="text-xs text-[var(--muted)]">
                               Kelola transaksi ini dari modul sumber.
                             </p>
                           ) : (
                             <>
-                              <ActionButton
-                                onClick={() => startEditTransaction(transaction.id)}
-                                variant="ghost"
-                              >
-                                Edit
-                              </ActionButton>
+                              {!transaction.sourceType ? (
+                                <ActionButton
+                                  onClick={() => startEditTransaction(transaction.id)}
+                                  variant="ghost"
+                                >
+                                  Edit
+                                </ActionButton>
+                              ) : null}
                               <ActionButton
                                 onClick={() => void handleDeleteTransaction(transaction.id)}
                                 variant="ghost"

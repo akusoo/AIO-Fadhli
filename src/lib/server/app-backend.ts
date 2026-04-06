@@ -1115,6 +1115,35 @@ function describeTransactionSource(sourceType: TransactionRow["source_type"]) {
   }[sourceType ?? "shopping"];
 }
 
+async function isTransactionSourceStillActive(
+  supabase: SupabaseClient,
+  userId: string,
+  transaction: Pick<TransactionRow, "source_type" | "source_id">,
+) {
+  if (!transaction.source_type || !transaction.source_id) {
+    return false;
+  }
+
+  const tableBySourceType = {
+    shopping: "shopping_items",
+    debt_installment: "debt_installments",
+    investment: "investments",
+  } as const;
+
+  const sourceTable = tableBySourceType[transaction.source_type];
+
+  const { data, error } = await supabase
+    .from(sourceTable)
+    .select("id")
+    .eq("id", transaction.source_id)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  raiseIfError(error);
+  return Boolean(data);
+}
+
 function transactionRowToInput(transaction: TransactionRow): AddTransactionInput {
   return {
     title: transaction.title,
@@ -1272,7 +1301,7 @@ export async function deleteTransactionWithSideEffects(
     throw new Error("Transaksi tidak ditemukan.");
   }
 
-  if (existing.source_type) {
+  if (existing.source_type && (await isTransactionSourceStillActive(supabase, userId, existing))) {
     throw new Error(
       `Transaksi ini sinkron dari ${describeTransactionSource(existing.source_type)}. Hapus dari modul sumber supaya data tetap konsisten.`,
     );
@@ -1983,6 +2012,15 @@ export async function moveShoppingToWishlistWithSideEffects(
   raiseIfError(createWishError);
 
   await softDeleteById(supabase, "shopping_items", userId, item.id);
+}
+
+export async function deleteShoppingItemWithSideEffects(
+  supabase: SupabaseClient,
+  userId: string,
+  itemId: string,
+) {
+  await softDeleteTransactionsBySource(supabase, userId, "shopping", itemId);
+  await softDeleteById(supabase, "shopping_items", userId, itemId);
 }
 
 export async function recordShoppingPurchaseWithSideEffects(

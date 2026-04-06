@@ -1,5 +1,8 @@
 import type { UpdateShoppingItemInput } from "@/lib/domain/models";
-import { buildAppSnapshot, softDeleteById } from "@/lib/server/app-backend";
+import {
+  buildAppSnapshot,
+  deleteShoppingItemWithSideEffects,
+} from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -61,7 +64,7 @@ export async function DELETE(
 
   try {
     const { itemId } = await contextParam.params;
-    await softDeleteById(context.supabase, "shopping_items", context.user.id, itemId);
+    await deleteShoppingItemWithSideEffects(context.supabase, context.user.id, itemId);
     const snapshot = await buildAppSnapshot(context.supabase, context.user);
     return okJson({ snapshot }, context.applyCookies);
   } catch (error) {

@@ -4,10 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getAuthedRouteContextMock,
   buildAppSnapshotMock,
+  deleteShoppingItemWithSideEffectsMock,
   moveShoppingToWishlistWithSideEffectsMock,
 } = vi.hoisted(() => ({
   getAuthedRouteContextMock: vi.fn(),
   buildAppSnapshotMock: vi.fn(),
+  deleteShoppingItemWithSideEffectsMock: vi.fn(),
   moveShoppingToWishlistWithSideEffectsMock: vi.fn(),
 }));
 
@@ -21,15 +23,18 @@ vi.mock("@/lib/server/routes", async () => {
 
 vi.mock("@/lib/server/app-backend", () => ({
   buildAppSnapshot: buildAppSnapshotMock,
+  deleteShoppingItemWithSideEffects: deleteShoppingItemWithSideEffectsMock,
   moveShoppingToWishlistWithSideEffects: moveShoppingToWishlistWithSideEffectsMock,
 }));
 
+import { DELETE as DELETEShoppingItem } from "@/app/api/shopping/[itemId]/route";
 import { POST as POSTMoveToWishlist } from "@/app/api/shopping/[itemId]/move-to-wishlist/route";
 
 describe("POST /api/shopping/[itemId]/move-to-wishlist", () => {
   beforeEach(() => {
     getAuthedRouteContextMock.mockReset();
     buildAppSnapshotMock.mockReset();
+    deleteShoppingItemWithSideEffectsMock.mockReset();
     moveShoppingToWishlistWithSideEffectsMock.mockReset();
   });
 
@@ -82,6 +87,38 @@ describe("POST /api/shopping/[itemId]/move-to-wishlist", () => {
     );
     await expect(response.json()).resolves.toEqual({
       snapshot: { wishItems: [{ id: "wish-1" }], shoppingItems: [] },
+    });
+  });
+
+  it("deletes shopping item and linked transactions through side effects", async () => {
+    getAuthedRouteContextMock.mockResolvedValue({
+      supabase: {},
+      user: { id: "user-1" },
+      applyCookies: vi.fn(),
+    });
+    deleteShoppingItemWithSideEffectsMock.mockResolvedValue(undefined);
+    buildAppSnapshotMock.mockResolvedValue({ shoppingItems: [], transactions: [] });
+
+    const response = await DELETEShoppingItem(
+      new Request("http://localhost/api/shopping/shop-1", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ itemId: "shop-1" }) },
+    );
+
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected a response");
+    }
+
+    expect(response.status).toBe(200);
+    expect(deleteShoppingItemWithSideEffectsMock).toHaveBeenCalledWith(
+      {},
+      "user-1",
+      "shop-1",
+    );
+    await expect(response.json()).resolves.toEqual({
+      snapshot: { shoppingItems: [], transactions: [] },
     });
   });
 });
