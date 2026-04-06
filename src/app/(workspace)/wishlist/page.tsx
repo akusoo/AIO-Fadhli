@@ -540,9 +540,15 @@ function WishlistRow({
               </InlineActionButton>
             </>
           ) : (
-            <ActionButton href="/shopping" variant="ghost">
-              Buka shopping
-            </ActionButton>
+            <>
+              <ActionButton href="/shopping" variant="ghost">
+                Buka shopping
+              </ActionButton>
+              <InlineActionButton onClick={onDelete} variant="ghost">
+                <Trash2 className="mr-2 size-4" strokeWidth={2.2} />
+                Hapus
+              </InlineActionButton>
+            </>
           )}
         </div>
       </div>
@@ -1019,7 +1025,9 @@ export default function WishlistPage() {
                   isEditing={false}
                   isResolvingEditLink={false}
                   item={item}
-                  onDelete={() => undefined}
+                  onDelete={() => {
+                    void handleDeleteWish(item);
+                  }}
                   onDraftChange={() => undefined}
                   onEditCancel={() => undefined}
                   onResolveEditLink={() => undefined}
