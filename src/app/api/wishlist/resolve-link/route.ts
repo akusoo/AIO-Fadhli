@@ -4,7 +4,10 @@ import {
   isRecoverableWishLinkPreviewError,
   resolveWishLinkPreview,
 } from "@/lib/server/wishlist-link-preview";
-import { resolveWishLinkPreviewViaExternalService } from "@/lib/server/wishlist-link-preview-external";
+import {
+  getWishLinkPreviewExternalMode,
+  resolveWishLinkPreviewViaExternalService,
+} from "@/lib/server/wishlist-link-preview-external";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
 export const runtime = "nodejs";
@@ -26,6 +29,29 @@ export async function POST(request: Request) {
 
     let item;
     let resolution: "fallback" | "parsed" = "parsed";
+    const externalMode = getWishLinkPreviewExternalMode(url);
+
+    if (externalMode !== "off") {
+      const externalItem = await resolveWishLinkPreviewViaExternalService(url).catch((error) => {
+        console.warn("Wishlist link preview external-first resolution failed.", {
+          message: error instanceof Error ? error.message : String(error),
+          mode: externalMode,
+          sourceUrl: url,
+        });
+        return null;
+      });
+
+      if (externalItem) {
+        item = externalItem;
+        return okJson({ item, resolution }, context.applyCookies);
+      }
+
+      if (externalMode === "required") {
+        resolution = "fallback";
+        item = createWishLinkPreviewFallback(url);
+        return okJson({ item, resolution }, context.applyCookies);
+      }
+    }
 
     try {
       item = await resolveWishLinkPreview(url);

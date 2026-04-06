@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveWishLinkPreviewViaExternalService } from "@/lib/server/wishlist-link-preview-external";
+import {
+  getWishLinkPreviewExternalMode,
+  resolveWishLinkPreviewViaExternalService,
+} from "@/lib/server/wishlist-link-preview-external";
 
 describe("wishlist link preview external resolver", () => {
   const originalResolverUrl = process.env.WISHLIST_LINK_RESOLVER_URL;
@@ -33,6 +36,18 @@ describe("wishlist link preview external resolver", () => {
     ).resolves.toBeNull();
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("marks Tokopedia as required and Shopee as preferred when a resolver URL is configured", () => {
+    process.env.WISHLIST_LINK_RESOLVER_URL = "https://resolver.example.com/preview";
+
+    expect(
+      getWishLinkPreviewExternalMode("https://www.tokopedia.com/jakartasepeda/sepeda-gravel-bike"),
+    ).toBe("required");
+    expect(
+      getWishLinkPreviewExternalMode("https://shopee.co.id/example-product-i.1.2"),
+    ).toBe("preferred");
+    expect(getWishLinkPreviewExternalMode("https://www.example.com/item")).toBe("off");
   });
 
   it("recovers Tokopedia links through the hosted reader fallback", async () => {
@@ -75,17 +90,16 @@ Rp2.950.000
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "https://r.jina.ai/http://www.tokopedia.com/jakartasepeda/sepeda-gravel-bike-police-toronto-1733551093865154096?t_id=1775382826980",
+      "https://r.jina.ai/http://www.tokopedia.com/jakartasepeda/sepeda-gravel-bike-police-toronto-1733551093865154096",
     );
   });
 
-  it("falls back to the configured resolver when the hosted reader fails", async () => {
+  it("prefers the configured resolver before falling back to the hosted reader", async () => {
     process.env.WISHLIST_LINK_RESOLVER_URL = "https://resolver.example.com/preview";
     process.env.WISHLIST_LINK_RESOLVER_TOKEN = "secret-token";
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockRejectedValueOnce(new Error("reader unavailable"))
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
@@ -120,9 +134,9 @@ Rp2.950.000
       title: "Sepeda Gravel Bike Police Toronto",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("https://resolver.example.com/preview");
-    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://resolver.example.com/preview");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -147,5 +161,47 @@ Rp2.950.000
     await expect(
       resolveWishLinkPreviewViaExternalService("https://www.example.com/item"),
     ).rejects.toThrow("Resolver eksternal tidak mengembalikan item yang valid.");
+  });
+
+  it("falls back to the hosted reader when the configured resolver fails", async () => {
+    process.env.WISHLIST_LINK_RESOLVER_URL = "https://resolver.example.com/preview";
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new Error("resolver unavailable"))
+      .mockResolvedValueOnce(
+        new Response(
+          `
+Title: Sepeda Gravel Bike POLICE TORONTO - Dark Purple di Jktsepeda | Tokopedia
+
+Markdown Content:
+![Image 2: Gambar Sepeda Gravel Bike POLICE TORONTO - Dark Purple](https://p19-images-sign-sg.tokopedia-static.net/product-main.jpeg)
+
+Rp2.950.000
+          `,
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/plain; charset=utf-8",
+            },
+          },
+        ),
+      );
+
+    await expect(
+      resolveWishLinkPreviewViaExternalService(
+        "https://www.tokopedia.com/jakartasepeda/sepeda-gravel-bike-police-toronto-1733551093865154096?t_id=1775382826980",
+      ),
+    ).resolves.toMatchObject({
+      imageUrl: "https://p19-images-sign-sg.tokopedia-static.net/product-main.jpeg",
+      targetPrice: 2_950_000,
+      title: "Sepeda Gravel Bike POLICE TORONTO - Dark Purple",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://resolver.example.com/preview");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "https://r.jina.ai/http://www.tokopedia.com/jakartasepeda/sepeda-gravel-bike-police-toronto-1733551093865154096",
+    );
   });
 });

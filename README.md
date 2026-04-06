@@ -43,6 +43,8 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_DB_URL=
+WISHLIST_LINK_RESOLVER_URL=
+WISHLIST_LINK_RESOLVER_TOKEN=
 # Harus tetap false untuk release/production.
 ENABLE_E2E_TEST_ROUTES=false
 E2E_TEST_SECRET=
@@ -58,6 +60,7 @@ TELEGRAM_WEBHOOK_SECRET=
 ## Backend production path
 
 - Source of truth backend sekarang diarahkan ke `Supabase + Next.js route handlers`
+- Resolver link wishlist production memakai jalur eksternal untuk marketplace yang bermasalah di Vercel origin fetch, terutama `Tokopedia`
 - SQL schema awal ada di `supabase/migrations/0001_init_aio_personal_tracker.sql`
 - Auth v1 memakai `email + password`
 - Register user baru tersedia di `/auth/sign-up`
@@ -71,6 +74,29 @@ Untuk mulai menghubungkan project ke Supabase:
 2. Isi `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 3. Jalankan SQL migration di project Supabase
 4. Buka `/auth/sign-in` untuk login pertama dan bootstrap starter data minimal
+
+### Wishlist link resolver
+
+Untuk production yang stabil, `POST /api/wishlist/resolve-link` bisa memakai Supabase Edge Function sebagai resolver utama marketplace.
+
+Env yang dibutuhkan:
+
+```bash
+WISHLIST_LINK_RESOLVER_URL=
+WISHLIST_LINK_RESOLVER_TOKEN=
+```
+
+Deploy function:
+
+```bash
+supabase functions deploy wishlist-link-resolver --project-ref <project-ref> --no-verify-jwt --use-api
+```
+
+Set secret function:
+
+```bash
+supabase secrets set WISHLIST_LINK_RESOLVER_TOKEN=<same-token> --project-ref <project-ref>
+```
 
 ## Telegram bot (Post-v1)
 

@@ -1,6 +1,9 @@
 import type { WishLinkPreview } from "@/lib/server/wishlist-link-preview";
 
-const EXTERNAL_RESOLVER_TIMEOUT_MS = 10_000;
+const CONFIGURED_RESOLVER_TIMEOUT_MS = 10_000;
+const JINA_RESOLVER_TIMEOUT_MS = 25_000;
+
+export type WishLinkPreviewExternalMode = "off" | "preferred" | "required";
 
 type ExternalResolverResponse = {
   imageUrl?: unknown;
@@ -45,16 +48,28 @@ export async function resolveWishLinkPreviewViaExternalService(input: string) {
   return null;
 }
 
-function createExternalResolutionStrategies(targetUrl: URL): ExternalResolutionStrategy[] {
-  const strategies: ExternalResolutionStrategy[] = [];
+export function getWishLinkPreviewExternalMode(input: string): WishLinkPreviewExternalMode {
+  const resolverUrl = process.env.WISHLIST_LINK_RESOLVER_URL?.trim();
 
-  if (isTokopediaHostname(targetUrl.hostname)) {
-    strategies.push({
-      name: "jina-reader",
-      resolve: () => resolveWishLinkPreviewViaJinaReader(targetUrl),
-    });
+  if (!resolverUrl) {
+    return "off";
   }
 
+  const targetUrl = parseHttpUrl(input);
+
+  if (isTokopediaHostname(targetUrl.hostname)) {
+    return "required";
+  }
+
+  if (isShopeeHostname(targetUrl.hostname)) {
+    return "preferred";
+  }
+
+  return "off";
+}
+
+function createExternalResolutionStrategies(targetUrl: URL): ExternalResolutionStrategy[] {
+  const strategies: ExternalResolutionStrategy[] = [];
   const resolverUrl = process.env.WISHLIST_LINK_RESOLVER_URL?.trim();
 
   if (resolverUrl) {
@@ -64,15 +79,24 @@ function createExternalResolutionStrategies(targetUrl: URL): ExternalResolutionS
     });
   }
 
+  if (isTokopediaHostname(targetUrl.hostname)) {
+    strategies.push({
+      name: "jina-reader",
+      resolve: () => resolveWishLinkPreviewViaJinaReader(targetUrl),
+    });
+  }
+
   return strategies;
 }
 
 async function resolveWishLinkPreviewViaJinaReader(targetUrl: URL) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), EXTERNAL_RESOLVER_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), JINA_RESOLVER_TIMEOUT_MS);
 
   try {
-    const readerUrl = `https://r.jina.ai/http://${targetUrl.toString().replace(/^https?:\/\//i, "")}`;
+    const readerUrl = `https://r.jina.ai/http://${stripTrackingSearchParams(targetUrl)
+      .toString()
+      .replace(/^https?:\/\//i, "")}`;
     const response = await fetch(readerUrl, {
       cache: "no-store",
       headers: {
@@ -94,7 +118,7 @@ async function resolveWishLinkPreviewViaJinaReader(targetUrl: URL) {
 
 async function resolveWishLinkPreviewViaConfiguredResolver(input: string, resolverUrl: string) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), EXTERNAL_RESOLVER_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), CONFIGURED_RESOLVER_TIMEOUT_MS);
 
   try {
     const response = await fetch(resolverUrl, {
@@ -328,11 +352,42 @@ function isTokopediaHostname(hostname: string) {
   return normalized === "tokopedia.com" || normalized.endsWith(".tokopedia.com");
 }
 
+function isShopeeHostname(hostname: string) {
+  const normalized = hostname.trim().toLowerCase();
+
+  return normalized === "shopee.co.id" || normalized.endsWith(".shopee.co.id");
+}
+
+function stripTrackingSearchParams(url: URL) {
+  const nextUrl = new URL(url.toString());
+  const keys = [...nextUrl.searchParams.keys()];
+
+  for (const key of keys) {
+    if (
+      /^utm_/i.test(key) ||
+      /^fbclid$/i.test(key) ||
+      /^gclid$/i.test(key) ||
+      /^srsltid$/i.test(key) ||
+      /^ref$/i.test(key) ||
+      /^spm$/i.test(key) ||
+      /^t_/i.test(key)
+    ) {
+      nextUrl.searchParams.delete(key);
+    }
+  }
+
+  return nextUrl;
+}
+
 function hostnameLabel(hostname: string) {
   const normalized = hostname.replace(/^www\./i, "");
 
   if (normalized.includes("tokopedia.com")) {
     return "Tokopedia";
+  }
+
+  if (normalized.includes("shopee.co.id")) {
+    return "Shopee";
   }
 
   return normalized;

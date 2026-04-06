@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppStateProvider } from "@/providers/app-state-provider";
 import "./globals.css";
 
@@ -17,6 +18,7 @@ export default function RootLayout({
     <html lang="id" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <AppStateProvider>{children}</AppStateProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
