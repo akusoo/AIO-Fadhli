@@ -14,6 +14,9 @@ import type {
   AddBudgetCycleInput,
   AddCategoryInput,
   AddDebtInput,
+  AddInvestmentInput,
+  AddInvestmentValuationInput,
+  UpdateBudgetCycleInput,
   AddRecurringPlanInput,
   AddNoteInput,
   AddProjectInput,
@@ -39,7 +42,9 @@ import type {
   UpdateSubtaskInput,
   UpdateDebtInstallmentInput,
   UpdateDebtInstallmentStatusInput,
+  UpdateInvestmentInput,
   UpdateTaskInput,
+  UpdateTransactionInput,
   UpdateWishInput,
 } from "@/lib/domain/models";
 import { initialAppSnapshot } from "@/lib/data/mock-data";
@@ -57,7 +62,13 @@ type AppStateContextValue = {
   addAccount(input: AddAccountInput): Promise<string>;
   addCategory(input: AddCategoryInput): Promise<string>;
   addBudgetCycle(input: AddBudgetCycleInput): Promise<string>;
+  updateBudgetCycle(input: UpdateBudgetCycleInput): Promise<void>;
   addTransaction(input: AddTransactionInput): Promise<void>;
+  updateTransaction(input: UpdateTransactionInput): Promise<void>;
+  addInvestment(input: AddInvestmentInput): Promise<void>;
+  updateInvestment(input: UpdateInvestmentInput): Promise<void>;
+  deleteInvestment(investmentId: string): Promise<void>;
+  addInvestmentValuation(input: AddInvestmentValuationInput): Promise<void>;
   addRecurringPlan(input: AddRecurringPlanInput): Promise<void>;
   addDebt(input: AddDebtInput): Promise<void>;
   payDebt(input: PayDebtInput): Promise<void>;
@@ -84,6 +95,7 @@ type AppStateContextValue = {
   deleteShoppingItem(itemId: string): Promise<void>;
   setShoppingStatus(input: SetShoppingStatusInput): Promise<void>;
   recordShoppingPurchase(itemId: string): Promise<void>;
+  moveShoppingToWishlist(itemId: string): Promise<void>;
   reset(): Promise<void>;
 };
 
@@ -206,6 +218,9 @@ function normalizeSnapshot(snapshot: Partial<AppSnapshot>): AppSnapshot {
         ...transaction,
       }),
     ),
+    investments: snapshot.investments ?? cloneValue(initialAppSnapshot.investments),
+    investmentValuations:
+      snapshot.investmentValuations ?? cloneValue(initialAppSnapshot.investmentValuations),
     recurringPlans:
       snapshot.recurringPlans ?? cloneValue(initialAppSnapshot.recurringPlans),
     debts: snapshot.debts ?? cloneValue(initialAppSnapshot.debts),
@@ -668,6 +683,169 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  async function updateTransaction(input: UpdateTransactionInput) {
+    const existingTransaction = snapshot.transactions.find(
+      (item) => item.id === input.transactionId,
+    );
+
+    if (!existingTransaction) {
+      throw new Error("Transaksi tidak ditemukan.");
+    }
+
+    if (existingTransaction.sourceType) {
+      throw new Error(
+        "Transaksi sinkron dari modul lain belum bisa diedit dari Finance. Edit dari modul sumbernya.",
+      );
+    }
+
+    applyOptimisticMutation((draft) => {
+      const transaction = draft.transactions.find((item) => item.id === input.transactionId);
+
+      if (!transaction || transaction.sourceType) {
+        return;
+      }
+
+      const previousInput: AddTransactionInput = {
+        title: transaction.title,
+        kind: transaction.kind,
+        amount: transaction.amount,
+        occurredOn: transaction.occurredOn,
+        accountId: transaction.accountId,
+        categoryId: transaction.categoryId,
+        cycleId: transaction.cycleId,
+        merchant: transaction.merchant,
+        tags: transaction.tags ?? [],
+        note: transaction.note,
+        transferTargetAccountId: transaction.transferTargetAccountId,
+      };
+
+      revertAccountBalances(draft, previousInput);
+      revertCycleSpend(draft, previousInput);
+
+      transaction.title = input.title;
+      transaction.kind = input.kind;
+      transaction.amount = input.amount;
+      transaction.occurredOn = input.occurredOn;
+      transaction.accountId = input.accountId;
+      transaction.categoryId = input.categoryId;
+      transaction.cycleId = input.cycleId;
+      transaction.merchant = input.merchant;
+      transaction.tags = input.tags ?? [];
+      transaction.note = input.note;
+      transaction.transferTargetAccountId = input.transferTargetAccountId;
+
+      const nextInput: AddTransactionInput = {
+        title: transaction.title,
+        kind: transaction.kind,
+        amount: transaction.amount,
+        occurredOn: transaction.occurredOn,
+        accountId: transaction.accountId,
+        categoryId: transaction.categoryId,
+        cycleId: transaction.cycleId,
+        merchant: transaction.merchant,
+        tags: transaction.tags ?? [],
+        note: transaction.note,
+        transferTargetAccountId: transaction.transferTargetAccountId,
+      };
+
+      updateAccountBalances(draft, nextInput);
+      updateCycleSpend(draft, nextInput);
+    });
+
+    await syncMutation(`/api/finance/transactions/${input.transactionId}`, "PATCH", input);
+  }
+
+  async function addInvestment(input: AddInvestmentInput) {
+    const clientId = createId("inv");
+
+    applyOptimisticMutation((draft) => {
+      draft.investments.unshift({
+        id: clientId,
+        name: input.name,
+        platform: input.platform,
+        instrument: input.instrument,
+        status: "active",
+        startDate: input.startDate,
+        investedAmount: input.investedAmount,
+        currentValue: input.currentValue,
+        accountId: input.accountId,
+        categoryId: input.categoryId,
+        tags: input.tags ?? [],
+        note: input.note,
+      });
+      draft.investmentValuations.unshift({
+        id: createId("ival"),
+        investmentId: clientId,
+        valuedOn: input.startDate,
+        currentValue: input.currentValue,
+        note: input.note,
+      });
+    });
+
+    await syncMutation("/api/finance/investments", "POST", {
+      ...input,
+      clientId,
+    });
+  }
+
+  async function updateInvestment(input: UpdateInvestmentInput) {
+    applyOptimisticMutation((draft) => {
+      const investment = draft.investments.find((item) => item.id === input.investmentId);
+
+      if (!investment) {
+        return;
+      }
+
+      investment.name = input.name;
+      investment.platform = input.platform;
+      investment.instrument = input.instrument;
+      investment.status = input.status;
+      investment.accountId = input.accountId;
+      investment.categoryId = input.categoryId;
+      investment.tags = input.tags ?? [];
+      investment.note = input.note;
+    });
+
+    await syncMutation(`/api/finance/investments/${input.investmentId}`, "PATCH", input);
+  }
+
+  async function deleteInvestment(investmentId: string) {
+    applyOptimisticMutation((draft) => {
+      draft.investments = draft.investments.filter((item) => item.id !== investmentId);
+      draft.investmentValuations = draft.investmentValuations.filter(
+        (item) => item.investmentId !== investmentId,
+      );
+    });
+
+    await syncMutation(`/api/finance/investments/${investmentId}`, "DELETE");
+  }
+
+  async function addInvestmentValuation(input: AddInvestmentValuationInput) {
+    applyOptimisticMutation((draft) => {
+      const investment = draft.investments.find((item) => item.id === input.investmentId);
+
+      if (!investment) {
+        return;
+      }
+
+      investment.currentValue = input.currentValue;
+      draft.investmentValuations.push({
+        id: createId("ival"),
+        investmentId: input.investmentId,
+        valuedOn: input.valuedOn,
+        currentValue: input.currentValue,
+        note: input.note,
+      });
+    });
+
+    await syncMutation(`/api/finance/investments/${input.investmentId}/valuations`, "POST", {
+      valuedOn: input.valuedOn,
+      currentValue: input.currentValue,
+      note: input.note,
+      syncToTransaction: input.syncToTransaction,
+    });
+  }
+
   async function addAccount(input: AddAccountInput) {
     const clientId = createId("acct");
 
@@ -734,6 +912,32 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
 
     return clientId;
+  }
+
+  async function updateBudgetCycle(input: UpdateBudgetCycleInput) {
+    applyOptimisticMutation((draft) => {
+      if (input.status === "active") {
+        draft.budgetCycles.forEach((cycle) => {
+          if (cycle.id !== input.cycleId && cycle.status === "active") {
+            cycle.status = "completed";
+          }
+        });
+      }
+
+      const cycle = draft.budgetCycles.find((item) => item.id === input.cycleId);
+
+      if (!cycle) {
+        return;
+      }
+
+      cycle.label = input.label;
+      cycle.startOn = input.startOn;
+      cycle.endOn = input.endOn;
+      cycle.targetAmount = input.targetAmount;
+      cycle.status = input.status;
+    });
+
+    await syncMutation(`/api/finance/budget-cycles/${input.cycleId}`, "PATCH", input);
   }
 
   async function addRecurringPlan(input: AddRecurringPlanInput) {
@@ -1245,6 +1449,56 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await syncMutation(`/api/shopping/${itemId}/record-purchase`, "POST");
   }
 
+  async function moveShoppingToWishlist(itemId: string) {
+    applyOptimisticMutation((draft) => {
+      const item = draft.shoppingItems.find((row) => row.id === itemId);
+
+      if (!item) {
+        return;
+      }
+
+      const linkedTransactions = draft.transactions.filter(
+        (transaction) =>
+          transaction.sourceType === "shopping" && transaction.sourceId === itemId,
+      );
+
+      linkedTransactions.forEach((transaction) => {
+        revertAccountBalances(draft, transaction);
+        revertCycleSpend(draft, transaction);
+      });
+
+      draft.transactions = draft.transactions.filter(
+        (transaction) =>
+          !(transaction.sourceType === "shopping" && transaction.sourceId === itemId),
+      );
+
+      const targetPrice = item.estimatedPrice * item.quantity;
+      const linkedWish = item.sourceWishId
+        ? draft.wishItems.find((wish) => wish.id === item.sourceWishId)
+        : undefined;
+
+      if (linkedWish) {
+        linkedWish.name = item.name;
+        linkedWish.targetPrice = targetPrice;
+        linkedWish.status = "ready";
+        linkedWish.note = linkedWish.note ?? item.note;
+      } else {
+        draft.wishItems.unshift({
+          id: createId("wish"),
+          name: item.name,
+          targetPrice,
+          priority: "medium",
+          status: "ready",
+          note: item.note,
+        });
+      }
+
+      draft.shoppingItems = draft.shoppingItems.filter((row) => row.id !== itemId);
+    });
+
+    await syncMutation(`/api/shopping/${itemId}/move-to-wishlist`, "POST");
+  }
+
   async function reset() {
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(CACHE_KEY);
@@ -1263,7 +1517,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         addAccount,
         addCategory,
         addBudgetCycle,
+        updateBudgetCycle,
         addTransaction,
+        updateTransaction,
+        addInvestment,
+        updateInvestment,
+        deleteInvestment,
+        addInvestmentValuation,
         addRecurringPlan,
         addDebt,
         payDebt,
@@ -1290,6 +1550,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         deleteShoppingItem,
         setShoppingStatus,
         recordShoppingPurchase,
+        moveShoppingToWishlist,
         reset,
       }}
     >

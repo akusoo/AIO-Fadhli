@@ -183,6 +183,9 @@ jobs:
       - name: Run local smoke E2E
         run: pnpm test:e2e:smoke
 
+      - name: Run investment workflow focus
+        run: pnpm exec playwright test --grep @investments
+
       - name: Upload Playwright smoke artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -235,6 +238,11 @@ jobs:
 
       - name: Run preview smoke tests
         run: pnpm test:e2e:smoke
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ steps.preview.outputs.preview_url }}
+
+      - name: Run preview investment workflow focus
+        run: pnpm exec playwright test --grep @investments
         env:
           PLAYWRIGHT_BASE_URL: ${{ steps.preview.outputs.preview_url }}
 

@@ -47,6 +47,9 @@ jobs:
       - name: Run full regression suite
         run: pnpm test:e2e:regression
 
+      - name: Run investment workflow focus
+        run: pnpm exec playwright test --grep @investments
+
       - name: Upload nightly regression artifacts
         if: always()
         uses: actions/upload-artifact@v4

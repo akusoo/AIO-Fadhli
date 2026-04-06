@@ -3,6 +3,8 @@ import { guardE2ERoute } from "@/lib/server/e2e";
 import { getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
 const RESET_TABLES = [
+  "investment_valuations",
+  "investments",
   "debt_payments",
   "debt_installments",
   "debts",

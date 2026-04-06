@@ -4,6 +4,8 @@ import type {
   AddBudgetCycleInput,
   AddCategoryInput,
   AddDebtInput,
+  AddInvestmentInput,
+  AddInvestmentValuationInput,
   AddTransactionInput,
   AppSnapshot,
   NoteLink,
@@ -11,6 +13,9 @@ import type {
   SetNoteLinksInput,
   UpdateDebtInstallmentInput,
   UpdateDebtInstallmentStatusInput,
+  UpdateInvestmentInput,
+  UpdateBudgetCycleInput,
+  UpdateTransactionInput,
 } from "@/lib/domain/models";
 import {
   getEffectiveInstallmentStatus,
@@ -86,6 +91,29 @@ type RecurringPlanRow = {
   tags: string[] | null;
   note: string | null;
   enabled: boolean;
+};
+
+type InvestmentRow = {
+  id: string;
+  name: string;
+  platform: string;
+  instrument: AppSnapshot["investments"][number]["instrument"];
+  status: AppSnapshot["investments"][number]["status"];
+  start_date: string;
+  invested_amount: number;
+  current_value: number;
+  account_id: string;
+  category_id: string | null;
+  tags: string[] | null;
+  note: string | null;
+};
+
+type InvestmentValuationRow = {
+  id: string;
+  investment_id: string;
+  valued_on: string;
+  current_value: number;
+  note: string | null;
 };
 
 type DebtRow = {
@@ -206,6 +234,8 @@ type AppTableRows = {
   budget_cycles: BudgetCycleRow;
   budget_category_allocations: BudgetCategoryAllocationRow;
   transactions: TransactionRow;
+  investments: InvestmentRow;
+  investment_valuations: InvestmentValuationRow;
   recurring_plans: RecurringPlanRow;
   debts: DebtRow;
   debt_installments: DebtInstallmentRow;
@@ -410,6 +440,33 @@ export async function ensureUserBootstrap(supabase: SupabaseClient, user: User) 
     raiseIfError(error);
   }
 
+  const { data: investmentCategoryRows, error: investmentCategoryError } = await runSupabaseRead(
+    async () =>
+      await supabase
+        .from("categories")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("name", "Investasi")
+        .is("deleted_at", null)
+        .limit(1),
+  );
+  raiseIfError(investmentCategoryError);
+
+  if ((investmentCategoryRows ?? []).length === 0) {
+    const { error } = await supabase.from("categories").upsert(
+      {
+        id: bootstrapId(user.id, "cat-investment"),
+        user_id: user.id,
+        name: "Investasi",
+        kind: "expense",
+        deleted_at: null,
+      },
+      { onConflict: "id" },
+    );
+
+    raiseIfError(error);
+  }
+
   if (!(await listStarterPresence(supabase, "accounts", user.id))) {
     const { error } = await supabase.from("accounts").upsert(
       {
@@ -520,6 +577,39 @@ export async function createBudgetCycle(
   return cycleId;
 }
 
+export async function updateBudgetCycle(
+  supabase: SupabaseClient,
+  userId: string,
+  input: UpdateBudgetCycleInput,
+) {
+  if (input.status === "active") {
+    const { error: resetError } = await supabase
+      .from("budget_cycles")
+      .update({ status: "completed" })
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .neq("id", input.cycleId)
+      .is("deleted_at", null);
+
+    raiseIfError(resetError);
+  }
+
+  const { error } = await supabase
+    .from("budget_cycles")
+    .update({
+      label: input.label,
+      start_on: input.startOn,
+      end_on: input.endOn,
+      target_amount: input.targetAmount,
+      status: input.status,
+    })
+    .eq("id", input.cycleId)
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+
+  raiseIfError(error);
+}
+
 export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Promise<AppSnapshot> {
   await ensureUserBootstrap(supabase, user);
 
@@ -530,6 +620,8 @@ export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Pr
     budgetCycles,
     budgetCategoryAllocations,
     transactions,
+    investments,
+    investmentValuations,
     recurringPlans,
     debts,
     debtInstallments,
@@ -549,6 +641,8 @@ export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Pr
     listRows(supabase, "budget_cycles", user.id, "start_on", false),
     listRows(supabase, "budget_category_allocations", user.id, "created_at", true),
     listRows(supabase, "transactions", user.id, "occurred_on", false),
+    listRows(supabase, "investments", user.id, "created_at", false),
+    listRows(supabase, "investment_valuations", user.id, "valued_on", true),
     listRows(supabase, "recurring_plans", user.id, "next_occurrence_on", true),
     listRows(supabase, "debts", user.id, "created_at", false),
     listRows(supabase, "debt_installments", user.id, "due_on", true),
@@ -621,6 +715,27 @@ export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Pr
       transferTargetAccountId: item.transfer_target_account_id ?? undefined,
       sourceType: item.source_type ?? undefined,
       sourceId: item.source_id ?? undefined,
+    })),
+    investments: investments.map((item) => ({
+      id: item.id,
+      name: item.name,
+      platform: item.platform,
+      instrument: item.instrument,
+      status: item.status,
+      startDate: item.start_date,
+      investedAmount: item.invested_amount,
+      currentValue: item.current_value,
+      accountId: item.account_id,
+      categoryId: item.category_id ?? undefined,
+      tags: item.tags ?? [],
+      note: item.note ?? undefined,
+    })),
+    investmentValuations: investmentValuations.map((item) => ({
+      id: item.id,
+      investmentId: item.investment_id,
+      valuedOn: item.valued_on,
+      currentValue: item.current_value,
+      note: item.note ?? undefined,
     })),
     recurringPlans: recurringPlans.map((item) => ({
       id: item.id,
@@ -755,6 +870,21 @@ async function getDefaultExpenseCategoryId(supabase: SupabaseClient, userId: str
 
   return (
     categories.find((item) => item.name === "Cicilan")?.id ??
+    categories.find((item) => item.kind === "expense")?.id
+  );
+}
+
+async function getDefaultIncomeCategoryId(supabase: SupabaseClient, userId: string) {
+  const categories = await listRows(supabase, "categories", userId, "created_at", true);
+
+  return categories.find((item) => item.kind === "income")?.id;
+}
+
+async function getInvestmentCategoryId(supabase: SupabaseClient, userId: string) {
+  const categories = await listRows(supabase, "categories", userId, "created_at", true);
+
+  return (
+    categories.find((item) => item.name.toLowerCase() === "investasi")?.id ??
     categories.find((item) => item.kind === "expense")?.id
   );
 }
@@ -977,6 +1107,296 @@ export async function createTransactionWithSideEffects(
   return transactionId;
 }
 
+function describeTransactionSource(sourceType: TransactionRow["source_type"]) {
+  return {
+    shopping: "shopping",
+    debt_installment: "modul hutang",
+    investment: "modul investasi",
+  }[sourceType ?? "shopping"];
+}
+
+function transactionRowToInput(transaction: TransactionRow): AddTransactionInput {
+  return {
+    title: transaction.title,
+    kind: transaction.kind,
+    amount: transaction.amount,
+    occurredOn: transaction.occurred_on,
+    accountId: transaction.account_id,
+    categoryId: transaction.category_id ?? undefined,
+    cycleId: transaction.cycle_id ?? undefined,
+    merchant: transaction.merchant ?? undefined,
+    tags: transaction.tags ?? [],
+    note: transaction.note ?? undefined,
+    transferTargetAccountId: transaction.transfer_target_account_id ?? undefined,
+    sourceType: transaction.source_type ?? undefined,
+    sourceId: transaction.source_id ?? undefined,
+  };
+}
+
+function mapTransactionInputToRow(input: AddTransactionInput) {
+  return {
+    title: input.title,
+    kind: input.kind,
+    amount: input.amount,
+    occurred_on: input.occurredOn,
+    account_id: input.accountId,
+    category_id: input.categoryId ?? null,
+    cycle_id: input.cycleId ?? null,
+    merchant: input.merchant ?? null,
+    tags: input.tags ?? [],
+    note: input.note ?? null,
+    transfer_target_account_id: input.transferTargetAccountId ?? null,
+    source_type: input.sourceType ?? null,
+    source_id: input.sourceId ?? null,
+  };
+}
+
+export async function updateTransactionWithSideEffects(
+  supabase: SupabaseClient,
+  userId: string,
+  input: UpdateTransactionInput,
+) {
+  const { data: existing, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("id", input.transactionId)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  raiseIfError(error);
+
+  if (!existing) {
+    throw new Error("Transaksi tidak ditemukan.");
+  }
+
+  if (existing.source_type) {
+    throw new Error(
+      `Transaksi ini sinkron dari ${describeTransactionSource(existing.source_type)}. Edit dari modul sumber supaya data tetap konsisten.`,
+    );
+  }
+
+  const previousInput = transactionRowToInput(existing);
+  const nextInput: AddTransactionInput = {
+    title: input.title,
+    kind: input.kind,
+    amount: input.amount,
+    occurredOn: input.occurredOn,
+    accountId: input.accountId,
+    categoryId: input.categoryId,
+    cycleId: input.cycleId,
+    merchant: input.merchant,
+    tags: input.tags ?? [],
+    note: input.note,
+    transferTargetAccountId: input.transferTargetAccountId,
+  };
+
+  let previousAccountReverted = false;
+  let previousCycleReverted = false;
+  let rowUpdated = false;
+  let nextAccountApplied = false;
+  let nextCycleApplied = false;
+
+  try {
+    await revertAccountBalances(supabase, previousInput);
+    previousAccountReverted = true;
+
+    await revertCycleAmounts(supabase, previousInput);
+    previousCycleReverted = true;
+
+    const { error: updateError } = await supabase
+      .from("transactions")
+      .update(mapTransactionInputToRow(nextInput))
+      .eq("id", input.transactionId)
+      .eq("user_id", userId)
+      .is("deleted_at", null);
+
+    raiseIfError(updateError);
+    rowUpdated = true;
+
+    await adjustAccountBalances(supabase, nextInput);
+    nextAccountApplied = true;
+
+    await adjustCycleAmounts(supabase, nextInput);
+    nextCycleApplied = true;
+  } catch (error) {
+    try {
+      if (nextCycleApplied) {
+        await revertCycleAmounts(supabase, nextInput);
+      }
+
+      if (nextAccountApplied) {
+        await revertAccountBalances(supabase, nextInput);
+      }
+
+      if (rowUpdated) {
+        const { error: rollbackError } = await supabase
+          .from("transactions")
+          .update(mapTransactionInputToRow(previousInput))
+          .eq("id", input.transactionId)
+          .eq("user_id", userId)
+          .is("deleted_at", null);
+
+        raiseIfError(rollbackError);
+      }
+
+      if (previousCycleReverted) {
+        await adjustCycleAmounts(supabase, previousInput);
+      }
+
+      if (previousAccountReverted) {
+        await adjustAccountBalances(supabase, previousInput);
+      }
+    } catch {}
+
+    throw error;
+  }
+}
+
+export async function createInvestmentWithSideEffects(
+  supabase: SupabaseClient,
+  userId: string,
+  input: AddInvestmentInput,
+  investmentId = createId("inv"),
+) {
+  const resolvedCategoryId = input.categoryId ?? (await getInvestmentCategoryId(supabase, userId));
+  const { error } = await supabase.from("investments").insert({
+    id: investmentId,
+    user_id: userId,
+    name: input.name,
+    platform: input.platform,
+    instrument: input.instrument,
+    status: "active",
+    start_date: input.startDate,
+    invested_amount: input.investedAmount,
+    current_value: input.currentValue,
+    account_id: input.accountId,
+    category_id: resolvedCategoryId ?? null,
+    tags: input.tags ?? [],
+    note: input.note ?? null,
+  });
+  raiseIfError(error);
+
+  const { error: valuationError } = await supabase.from("investment_valuations").insert({
+    id: createId("ival"),
+    user_id: userId,
+    investment_id: investmentId,
+    valued_on: input.startDate,
+    current_value: input.currentValue,
+    note: input.note ?? null,
+  });
+  raiseIfError(valuationError);
+
+  if (input.syncToTransaction) {
+    await createTransactionWithSideEffects(supabase, userId, {
+      title: `Investasi awal • ${input.name}`,
+      kind: "expense",
+      amount: input.investedAmount,
+      occurredOn: input.startDate,
+      accountId: input.accountId,
+      categoryId: resolvedCategoryId ?? undefined,
+      cycleId: await getActiveCycleId(supabase, userId),
+      tags: ["investasi", input.platform.toLowerCase()],
+      note: "Dicatat otomatis dari modul investasi",
+      sourceType: "investment",
+      sourceId: investmentId,
+    });
+  }
+
+  return investmentId;
+}
+
+export async function updateInvestment(
+  supabase: SupabaseClient,
+  userId: string,
+  input: UpdateInvestmentInput,
+) {
+  const { error } = await supabase
+    .from("investments")
+    .update({
+      name: input.name,
+      platform: input.platform,
+      instrument: input.instrument,
+      status: input.status,
+      account_id: input.accountId,
+      category_id: input.categoryId ?? null,
+      tags: input.tags ?? [],
+      note: input.note ?? null,
+    })
+    .eq("id", input.investmentId)
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+
+  raiseIfError(error);
+}
+
+export async function addInvestmentValuationWithSideEffects(
+  supabase: SupabaseClient,
+  userId: string,
+  input: AddInvestmentValuationInput,
+) {
+  const { data: investment, error: investmentError } = await supabase
+    .from("investments")
+    .select("*")
+    .eq("id", input.investmentId)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  raiseIfError(investmentError);
+
+  if (!investment) {
+    throw new Error("Investasi tidak ditemukan.");
+  }
+
+  const { error: valuationError } = await supabase.from("investment_valuations").upsert(
+    {
+      id: createId("ival"),
+      user_id: userId,
+      investment_id: investment.id,
+      valued_on: input.valuedOn,
+      current_value: input.currentValue,
+      note: input.note ?? null,
+    },
+    { onConflict: "investment_id,valued_on" },
+  );
+  raiseIfError(valuationError);
+
+  const previousValue = investment.current_value;
+
+  const { error: updateError } = await supabase
+    .from("investments")
+    .update({ current_value: input.currentValue })
+    .eq("id", investment.id)
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+  raiseIfError(updateError);
+
+  const delta = input.currentValue - previousValue;
+
+  if (!input.syncToTransaction || delta === 0) {
+    return;
+  }
+
+  const categoryId =
+    delta >= 0
+      ? await getDefaultIncomeCategoryId(supabase, userId)
+      : investment.category_id ?? (await getInvestmentCategoryId(supabase, userId));
+
+  await createTransactionWithSideEffects(supabase, userId, {
+    title: `Valuasi investasi • ${investment.name}`,
+    kind: delta >= 0 ? "income" : "expense",
+    amount: Math.abs(delta),
+    occurredOn: input.valuedOn,
+    accountId: investment.account_id,
+    categoryId: categoryId ?? undefined,
+    cycleId: await getActiveCycleId(supabase, userId),
+    tags: ["investasi", "valuasi"],
+    note: input.note ? `${input.note} • sinkron valuasi investasi` : "Sinkron valuasi investasi",
+    sourceType: "investment",
+    sourceId: investment.id,
+  });
+}
+
 async function softDeleteTransactionsBySource(
   supabase: SupabaseClient,
   userId: string,
@@ -989,36 +1409,10 @@ async function softDeleteTransactionsBySource(
   );
 
   for (const transaction of linked) {
-    await revertAccountBalances(supabase, {
-      title: transaction.title,
-      kind: transaction.kind,
-      amount: transaction.amount,
-      occurredOn: transaction.occurred_on,
-      accountId: transaction.account_id,
-      categoryId: transaction.category_id ?? undefined,
-      cycleId: transaction.cycle_id ?? undefined,
-      merchant: transaction.merchant ?? undefined,
-      tags: transaction.tags ?? [],
-      note: transaction.note ?? undefined,
-      transferTargetAccountId: transaction.transfer_target_account_id ?? undefined,
-      sourceType: transaction.source_type ?? undefined,
-      sourceId: transaction.source_id ?? undefined,
-    });
-    await revertCycleAmounts(supabase, {
-      title: transaction.title,
-      kind: transaction.kind,
-      amount: transaction.amount,
-      occurredOn: transaction.occurred_on,
-      accountId: transaction.account_id,
-      categoryId: transaction.category_id ?? undefined,
-      cycleId: transaction.cycle_id ?? undefined,
-      merchant: transaction.merchant ?? undefined,
-      tags: transaction.tags ?? [],
-      note: transaction.note ?? undefined,
-      transferTargetAccountId: transaction.transfer_target_account_id ?? undefined,
-      sourceType: transaction.source_type ?? undefined,
-      sourceId: transaction.source_id ?? undefined,
-    });
+    const transactionInput = transactionRowToInput(transaction);
+
+    await revertAccountBalances(supabase, transactionInput);
+    await revertCycleAmounts(supabase, transactionInput);
 
     const { error } = await supabase
       .from("transactions")
@@ -1462,6 +1856,74 @@ export async function moveWishToShoppingWithSideEffects(
     note: "Dipromosikan dari wishlist",
   });
   raiseIfError(shoppingError);
+}
+
+export async function moveShoppingToWishlistWithSideEffects(
+  supabase: SupabaseClient,
+  userId: string,
+  itemId: string,
+) {
+  const { data: item, error } = await supabase
+    .from("shopping_items")
+    .select("*")
+    .eq("id", itemId)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  raiseIfError(error);
+
+  if (!item) {
+    throw new Error("Shopping item tidak ditemukan.");
+  }
+
+  await softDeleteTransactionsBySource(supabase, userId, "shopping", item.id);
+
+  const nextTargetPrice = item.estimated_price * (item.quantity ?? 1);
+  const nextNote = item.note ?? null;
+
+  if (item.source_wish_id) {
+    const { data: existingWish, error: wishError } = await supabase
+      .from("wish_items")
+      .select("*")
+      .eq("id", item.source_wish_id)
+      .eq("user_id", userId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    raiseIfError(wishError);
+
+    if (existingWish) {
+      const { error: restoreWishError } = await supabase
+        .from("wish_items")
+        .update({
+          name: item.name,
+          target_price: nextTargetPrice,
+          status: "ready",
+          note: existingWish.note ?? nextNote,
+        })
+        .eq("id", existingWish.id)
+        .eq("user_id", userId)
+        .is("deleted_at", null);
+      raiseIfError(restoreWishError);
+
+      await softDeleteById(supabase, "shopping_items", userId, item.id);
+      return;
+    }
+  }
+
+  const { error: createWishError } = await supabase.from("wish_items").insert({
+    id: createId("wish"),
+    user_id: userId,
+    name: item.name,
+    target_price: nextTargetPrice,
+    priority: "medium",
+    status: "ready",
+    note: nextNote,
+    source_url: null,
+    image_url: null,
+  });
+  raiseIfError(createWishError);
+
+  await softDeleteById(supabase, "shopping_items", userId, item.id);
 }
 
 export async function recordShoppingPurchaseWithSideEffects(

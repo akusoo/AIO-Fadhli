@@ -169,4 +169,49 @@ test.describe("core workflows", () => {
 
     await expect(page.getByText(new RegExp(`${debtName}.*cicilan`, "i")).first()).toBeVisible();
   });
+
+  test("@smoke @regression @investments investasi bisa dibuat, diupdate, dan valuasinya sinkron ke transaksi", async ({ page }) => {
+    const investmentName = uniqueLabel("E2E Invest");
+
+    await gotoAndAssert(
+      page,
+      "/finance",
+      /Finance yang lebih kaya, tetap terasa operasional/i,
+    );
+
+    await page.getByRole("button", { name: "Investments" }).click();
+
+    await page.getByLabel("Nama investasi").fill(investmentName);
+    await page.getByLabel("Platform").fill("Stockbit");
+    await page.getByLabel("Instrumen").selectOption("stock");
+    await page.getByLabel("Tanggal mulai").fill("2026-04-01");
+    await page.getByRole("textbox", { name: /^Modal awal$/ }).fill("1000000");
+    await page.getByRole("textbox", { name: /^Nilai saat ini$/ }).first().fill("1020000");
+    await page.getByLabel("Akun sumber").selectOption({ index: 0 });
+    await page.getByLabel("Tags (opsional)").fill("e2e,investasi");
+    await page.getByLabel("Catatan").first().fill("Create investment from e2e flow");
+    await page.getByRole("checkbox", { name: /Catat modal awal ke transaksi finance/i }).check();
+    await page.getByRole("button", { name: /Simpan investasi/i }).click();
+
+    const investmentRow = page.getByTestId(/investment-row-/).filter({ hasText: investmentName }).first();
+    await expect(investmentRow).toBeVisible();
+
+    await investmentRow.getByRole("button", { name: /^Edit$/ }).click();
+    await page.getByLabel("Platform").fill("Bibit");
+    await page.getByLabel("Status").selectOption("paused");
+    await page.getByRole("button", { name: /Update investasi/i }).click();
+    await expect(page.getByText(/Investasi berhasil diperbarui/i)).toBeVisible();
+
+    await page.getByTestId("investment-valuation-select").selectOption({ index: 0 });
+    await page.getByLabel("Tanggal valuasi").fill("2026-04-02");
+    await page.getByTestId("investment-valuation-current-value").fill("1050000");
+    await page.getByTestId("investment-valuation-note").fill("Valuasi naik setelah update");
+    await page
+      .getByRole("checkbox", { name: /Sinkron delta valuasi ke transaksi finance/i })
+      .check();
+    await page.getByRole("button", { name: /Simpan valuasi/i }).click();
+
+    await page.getByRole("button", { name: "Transactions" }).click();
+    await expect(page.getByText(new RegExp(`Investasi awal.*${investmentName}`, "i"))).toBeVisible();
+  });
 });

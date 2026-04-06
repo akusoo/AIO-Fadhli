@@ -2,11 +2,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   addDebtWithInstallments,
   buildAppSnapshot,
+  createBudgetCycle,
   createTransactionWithSideEffects,
   ensureUserBootstrap,
+  moveShoppingToWishlistWithSideEffects,
   moveWishToShoppingWithSideEffects,
   recordShoppingPurchaseWithSideEffects,
   replaceNoteLinks,
+  updateBudgetCycle,
   updateDebtInstallmentStatusWithSideEffects,
 } from "@/lib/server/app-backend";
 import {
@@ -81,6 +84,48 @@ describeIfIntegration("app backend integration", () => {
 
     expect(after.transactions.some((transaction) => transaction.title === "Integration expense")).toBe(true);
     expect(trackedAccount?.balance).toBe((before.accounts[0]?.balance ?? 0) - 50_000);
+  });
+
+  it("updates budget cycle details and swaps active status safely", async () => {
+    await ensureUserBootstrap(primaryUser.client, primaryUser.user);
+
+    const before = await buildAppSnapshot(primaryUser.client, primaryUser.user);
+    const previousActiveId = before.budgetCycles.find((cycle) => cycle.status === "active")?.id;
+
+    const plannedCycleId = await createBudgetCycle(primaryUser.client, primaryUser.user.id, {
+      label: "Siklus akhir April",
+      startOn: "2026-04-25",
+      endOn: "2026-04-30",
+      targetAmount: 1_100_000,
+      status: "planned",
+    });
+
+    await updateBudgetCycle(primaryUser.client, primaryUser.user.id, {
+      cycleId: plannedCycleId,
+      label: "Siklus akhir April revisi",
+      startOn: "2026-04-24",
+      endOn: "2026-04-30",
+      targetAmount: 1_250_000,
+      status: "active",
+    });
+
+    const after = await buildAppSnapshot(primaryUser.client, primaryUser.user);
+    const updatedCycle = after.budgetCycles.find((cycle) => cycle.id === plannedCycleId);
+    const otherActiveCycles = after.budgetCycles.filter(
+      (cycle) => cycle.id !== plannedCycleId && cycle.status === "active",
+    );
+    const previousActive = previousActiveId
+      ? after.budgetCycles.find((cycle) => cycle.id === previousActiveId)
+      : undefined;
+
+    expect(updatedCycle?.label).toBe("Siklus akhir April revisi");
+    expect(updatedCycle?.status).toBe("active");
+    expect(updatedCycle?.startOn).toBe("2026-04-24");
+    expect(updatedCycle?.targetAmount).toBe(1_250_000);
+    expect(otherActiveCycles).toHaveLength(0);
+    if (previousActive) {
+      expect(previousActive.status).toBe("completed");
+    }
   });
 
   it("keeps debt summaries, payments, and linked finance rows in sync", async () => {
@@ -195,6 +240,93 @@ describeIfIntegration("app backend integration", () => {
     );
 
     expect(linkedTransactions).toHaveLength(1);
+  });
+
+  it("returns shopping items to wishlist and removes linked shopping transactions", async () => {
+    await ensureUserBootstrap(primaryUser.client, primaryUser.user);
+
+    const wishId = "wish-return";
+
+    await primaryUser.client.from("wish_items").insert({
+      id: wishId,
+      user_id: primaryUser.user.id,
+      name: "Headphone",
+      target_price: 450_000,
+      priority: "medium",
+      status: "ready",
+    });
+
+    await moveWishToShoppingWithSideEffects(primaryUser.client, primaryUser.user.id, wishId);
+
+    let snapshot = await buildAppSnapshot(primaryUser.client, primaryUser.user);
+    const movedItem = snapshot.shoppingItems.find((item) => item.sourceWishId === wishId);
+    const trackedAccountId = snapshot.accounts[0]?.id;
+    const balanceBeforePurchase = snapshot.accounts.find((account) => account.id === trackedAccountId)?.balance;
+
+    expect(movedItem).toBeTruthy();
+
+    await primaryUser.client
+      .from("shopping_items")
+      .update({ status: "bought", quantity: 2, estimated_price: 225_000 })
+      .eq("id", movedItem?.id as string)
+      .eq("user_id", primaryUser.user.id);
+
+    await recordShoppingPurchaseWithSideEffects(
+      primaryUser.client,
+      primaryUser.user.id,
+      movedItem?.id as string,
+    );
+
+    await moveShoppingToWishlistWithSideEffects(
+      primaryUser.client,
+      primaryUser.user.id,
+      movedItem?.id as string,
+    );
+
+    snapshot = await buildAppSnapshot(primaryUser.client, primaryUser.user);
+    const restoredWish = snapshot.wishItems.find((item) => item.id === wishId);
+    const balanceAfterReturn = snapshot.accounts.find((account) => account.id === trackedAccountId)?.balance;
+
+    expect(snapshot.shoppingItems.some((item) => item.id === movedItem?.id)).toBe(false);
+    expect(
+      snapshot.transactions.some(
+        (transaction) =>
+          transaction.sourceType === "shopping" && transaction.sourceId === movedItem?.id,
+      ),
+    ).toBe(false);
+    expect(restoredWish?.status).toBe("ready");
+    expect(restoredWish?.targetPrice).toBe(450_000);
+    expect(balanceAfterReturn).toBe(balanceBeforePurchase);
+  });
+
+  it("creates a wishlist item when returning a manual shopping item", async () => {
+    await ensureUserBootstrap(primaryUser.client, primaryUser.user);
+
+    await primaryUser.client.from("shopping_items").insert({
+      id: "shop-manual",
+      user_id: primaryUser.user.id,
+      name: "Lampu meja",
+      estimated_price: 80_000,
+      quantity: 2,
+      section: "Kerja & elektronik",
+      status: "planned",
+      note: "Cari warna warm white",
+    });
+
+    await moveShoppingToWishlistWithSideEffects(
+      primaryUser.client,
+      primaryUser.user.id,
+      "shop-manual",
+    );
+
+    const snapshot = await buildAppSnapshot(primaryUser.client, primaryUser.user);
+    const createdWish = snapshot.wishItems.find((item) => item.name === "Lampu meja");
+
+    expect(snapshot.shoppingItems.some((item) => item.id === "shop-manual")).toBe(false);
+    expect(createdWish).toBeTruthy();
+    expect(createdWish?.status).toBe("ready");
+    expect(createdWish?.targetPrice).toBe(160_000);
+    expect(createdWish?.note).toBe("Cari warna warm white");
   });
 
   it("respects RLS boundaries between two test users", async () => {

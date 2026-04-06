@@ -5,6 +5,8 @@ import type {
   CashflowPoint,
   CategorySpendPoint,
   FinanceOverview,
+  Investment,
+  InvestmentValuation,
   RecurringPlan,
   Transaction,
   UpcomingFinanceItem,
@@ -370,4 +372,129 @@ export function buildCategoryBudgetSummary(
     remainingAmount: allocation.allocatedAmount - spentAmount,
     isOverspent: spentAmount > allocation.allocatedAmount,
   };
+}
+
+export function getInvestmentSummary(snapshot: AppSnapshot) {
+  const investments = snapshot.investments ?? [];
+  const investedAmount = investments.reduce((sum, item) => sum + item.investedAmount, 0);
+  const currentValue = investments.reduce((sum, item) => sum + item.currentValue, 0);
+  const gainLoss = currentValue - investedAmount;
+  const gainLossPercent = investedAmount > 0 ? (gainLoss / investedAmount) * 100 : 0;
+
+  return {
+    investedAmount,
+    currentValue,
+    gainLoss,
+    gainLossPercent,
+    activeCount: investments.filter((item) => item.status === "active").length,
+  };
+}
+
+export function getInvestmentAllocationByPlatform(snapshot: AppSnapshot) {
+  const grouped = new Map<string, number>();
+
+  (snapshot.investments ?? []).forEach((item) => {
+    grouped.set(item.platform, (grouped.get(item.platform) ?? 0) + item.currentValue);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([platform, value]) => ({ platform, value }))
+    .sort((left, right) => right.value - left.value);
+}
+
+export function getInvestmentAllocationByInstrument(snapshot: AppSnapshot) {
+  const grouped = new Map<string, number>();
+
+  (snapshot.investments ?? []).forEach((item) => {
+    grouped.set(item.instrument, (grouped.get(item.instrument) ?? 0) + item.currentValue);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([instrument, value]) => ({ instrument, value }))
+    .sort((left, right) => right.value - left.value);
+}
+
+export function getInvestmentDistributionByAccount(snapshot: AppSnapshot) {
+  const grouped = new Map<string, number>();
+
+  (snapshot.investments ?? []).forEach((item) => {
+    grouped.set(item.accountId, (grouped.get(item.accountId) ?? 0) + item.currentValue);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([accountId, value]) => ({
+      accountId,
+      accountName: resolveAccountName(snapshot.accounts ?? [], accountId),
+      value,
+    }))
+    .sort((left, right) => right.value - left.value);
+}
+
+type LeaderboardRow = {
+  id: string;
+  name: string;
+  gainLoss: number;
+  gainLossPercent: number;
+  investedAmount: number;
+  currentValue: number;
+};
+
+function toLeaderboardRow(item: Investment): LeaderboardRow {
+  const gainLoss = item.currentValue - item.investedAmount;
+  return {
+    id: item.id,
+    name: item.name,
+    gainLoss,
+    gainLossPercent: item.investedAmount > 0 ? (gainLoss / item.investedAmount) * 100 : 0,
+    investedAmount: item.investedAmount,
+    currentValue: item.currentValue,
+  };
+}
+
+export function getInvestmentTopGainers(snapshot: AppSnapshot, limit = 5) {
+  return (snapshot.investments ?? [])
+    .map(toLeaderboardRow)
+    .sort((left, right) => right.gainLoss - left.gainLoss)
+    .slice(0, limit);
+}
+
+export function getInvestmentTopLosers(snapshot: AppSnapshot, limit = 5) {
+  return (snapshot.investments ?? [])
+    .map(toLeaderboardRow)
+    .sort((left, right) => left.gainLoss - right.gainLoss)
+    .slice(0, limit);
+}
+
+function latestValueUntil(valuations: InvestmentValuation[], investmentId: string, date: string) {
+  let latest: InvestmentValuation | undefined;
+
+  valuations.forEach((valuation) => {
+    if (valuation.investmentId !== investmentId || valuation.valuedOn > date) {
+      return;
+    }
+
+    if (!latest || valuation.valuedOn > latest.valuedOn) {
+      latest = valuation;
+    }
+  });
+
+  return latest?.currentValue;
+}
+
+export function getInvestmentTrend(snapshot: AppSnapshot) {
+  const valuations = (snapshot.investmentValuations ?? []).slice();
+  const dates = Array.from(new Set(valuations.map((item) => item.valuedOn))).sort();
+
+  return dates.map((date) => {
+    const total = (snapshot.investments ?? []).reduce((sum, investment) => {
+      const value = latestValueUntil(valuations, investment.id, date) ?? investment.currentValue;
+      return sum + value;
+    }, 0);
+
+    return {
+      id: date,
+      label: formatShortLabel(date),
+      value: total,
+    };
+  });
 }

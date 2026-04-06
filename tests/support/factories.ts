@@ -1,8 +1,10 @@
 import { initialAppSnapshot } from "@/lib/data/mock-data";
 import type {
+  AddInvestmentInput,
   AddTransactionInput,
   AppSnapshot,
   DebtInstallment,
+  Investment,
   Task,
 } from "@/lib/domain/models";
 
@@ -44,6 +46,37 @@ export function makeExpenseInput(overrides: Partial<AddTransactionInput> = {}): 
     accountId: "acct-bca",
     categoryId: "cat-food",
     cycleId: "cycle-01",
+    ...overrides,
+  };
+}
+
+export function makeInvestment(overrides: Partial<Investment> = {}): Investment {
+  return {
+    id: "inv-test",
+    name: "Test investment",
+    platform: "Test platform",
+    instrument: "stock",
+    status: "active",
+    startDate: "2026-03-01",
+    investedAmount: 1_000_000,
+    currentValue: 1_050_000,
+    accountId: "acct-bca",
+    tags: ["test"],
+    ...overrides,
+  };
+}
+
+export function makeInvestmentInput(
+  overrides: Partial<AddInvestmentInput> = {},
+): AddInvestmentInput {
+  return {
+    name: "Test investment",
+    platform: "Test platform",
+    instrument: "stock",
+    startDate: "2026-03-01",
+    investedAmount: 1_000_000,
+    currentValue: 1_050_000,
+    accountId: "acct-bca",
     ...overrides,
   };
 }

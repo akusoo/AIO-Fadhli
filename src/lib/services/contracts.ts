@@ -30,6 +30,8 @@ import type {
   Subtask,
   Task,
   Transaction,
+  UpdateBudgetCycleInput,
+  UpdateTransactionInput,
   UpdateDebtInstallmentInput,
   UpdateDebtInstallmentStatusInput,
   UpdateNoteInput,
@@ -56,6 +58,8 @@ export interface FinanceRepository {
   listBudgetCategoryAllocations(): Promise<BudgetCategoryAllocation[]>;
   listTransactions(): Promise<Transaction[]>;
   addTransaction(input: AddTransactionInput): Promise<Transaction>;
+  updateTransaction(input: UpdateTransactionInput): Promise<Transaction>;
+  updateBudgetCycle(input: UpdateBudgetCycleInput): Promise<BudgetCycle>;
   listRecurringPlans(): Promise<RecurringPlan[]>;
   addRecurringPlan(input: AddRecurringPlanInput): Promise<RecurringPlan>;
   getFinanceOverview(month?: string): Promise<FinanceOverview>;
@@ -108,6 +112,7 @@ export interface ShoppingRepository {
   deleteShoppingItem(itemId: string): Promise<void>;
   setShoppingStatus(input: SetShoppingStatusInput): Promise<ShoppingItem>;
   recordShoppingPurchase(itemId: string): Promise<void>;
+  moveShoppingToWishlist(itemId: string): Promise<void>;
 }
 
 export interface ReminderService {

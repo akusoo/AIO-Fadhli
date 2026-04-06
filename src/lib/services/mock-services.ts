@@ -12,9 +12,12 @@ import type {
   SetNoteLinksInput,
   Subtask,
   Task,
+  Transaction,
+  UpdateBudgetCycleInput,
   UpdateNoteInput,
   UpdateSubtaskInput,
   UpdateTaskInput,
+  UpdateTransactionInput,
 } from "@/lib/domain/models";
 import type {
   AuthService,
@@ -78,6 +81,46 @@ export const mockFinanceRepository: FinanceRepository = {
     return {
       id: createId("trx"),
       ...input,
+    };
+  },
+  async updateTransaction(input: UpdateTransactionInput) {
+    const transaction = initialAppSnapshot.transactions.find(
+      (item) => item.id === input.transactionId,
+    );
+
+    if (!transaction) {
+      throw new Error(`Transaction ${input.transactionId} not found`);
+    }
+
+    return {
+      ...deepClone(transaction),
+      title: input.title,
+      kind: input.kind,
+      amount: input.amount,
+      occurredOn: input.occurredOn,
+      accountId: input.accountId,
+      categoryId: input.categoryId,
+      cycleId: input.cycleId,
+      merchant: input.merchant,
+      tags: input.tags ?? [],
+      note: input.note,
+      transferTargetAccountId: input.transferTargetAccountId,
+    } satisfies Transaction;
+  },
+  async updateBudgetCycle(input: UpdateBudgetCycleInput) {
+    const cycle = initialAppSnapshot.budgetCycles.find((item) => item.id === input.cycleId);
+
+    if (!cycle) {
+      throw new Error(`Budget cycle ${input.cycleId} not found`);
+    }
+
+    return {
+      ...deepClone(cycle),
+      label: input.label,
+      startOn: input.startOn,
+      endOn: input.endOn,
+      targetAmount: input.targetAmount,
+      status: input.status,
     };
   },
   async listRecurringPlans() {

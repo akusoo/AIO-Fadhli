@@ -4,6 +4,11 @@ import {
   filterTransactions,
   getFinanceOverview,
   getForecastItems,
+  getInvestmentAllocationByPlatform,
+  getInvestmentSummary,
+  getInvestmentTopGainers,
+  getInvestmentTopLosers,
+  getInvestmentTrend,
   getMonthlyCategorySpendPoints,
   getTransactionTags,
   getUpcomingFinanceItems,
@@ -54,5 +59,21 @@ describe("finance helpers", () => {
     expect(getUpcomingFinanceItems(snapshot).length).toBeGreaterThan(0);
     expect(getMonthlyCategorySpendPoints(snapshot, "2026-03")[0]?.spentAmount).toBeGreaterThan(0);
     expect(getTransactionTags(snapshot)).toContain("design");
+  });
+
+  it("builds investment summary, allocations, trend, and leaderboards", () => {
+    const snapshot = cloneSnapshot();
+    const summary = getInvestmentSummary(snapshot);
+    const byPlatform = getInvestmentAllocationByPlatform(snapshot);
+    const trend = getInvestmentTrend(snapshot);
+    const gainers = getInvestmentTopGainers(snapshot, 2);
+    const losers = getInvestmentTopLosers(snapshot, 2);
+
+    expect(summary.investedAmount).toBeGreaterThan(0);
+    expect(summary.currentValue).toBeGreaterThan(0);
+    expect(byPlatform[0]?.value).toBeGreaterThan(0);
+    expect(trend.length).toBeGreaterThan(0);
+    expect(gainers).toHaveLength(2);
+    expect(losers).toHaveLength(2);
   });
 });

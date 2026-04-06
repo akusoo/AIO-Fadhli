@@ -9,6 +9,21 @@ type MockError = {
 function createSupabaseMock(profileErrors: MockError[]) {
   let profileUpsertCalls = 0;
 
+  function buildSelectChain() {
+    return {
+      eq() {
+        return {
+          ...buildSelectChain(),
+          is() {
+            return {
+              limit: async () => ({ data: [{ id: "existing-row" }], error: null }),
+            };
+          },
+        };
+      },
+    };
+  }
+
   return {
     supabase: {
       from(table: string) {
@@ -33,17 +48,7 @@ function createSupabaseMock(profileErrors: MockError[]) {
 
         return {
           select() {
-            return {
-              eq() {
-                return {
-                  is() {
-                    return {
-                      limit: async () => ({ data: [{ id: `${table}-existing` }], error: null }),
-                    };
-                  },
-                };
-              },
-            };
+            return buildSelectChain();
           },
           upsert: async () => ({ error: null }),
         };

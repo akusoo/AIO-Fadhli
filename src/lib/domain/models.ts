@@ -12,6 +12,15 @@ export type TransactionKind = "income" | "expense" | "transfer";
 export type CategoryKind = "income" | "expense";
 export type AccountType = "cash" | "bank" | "e-wallet";
 export type BudgetCycleStatus = "active" | "completed" | "planned";
+export type InvestmentStatus = "active" | "paused" | "closed";
+export type InvestmentInstrument =
+  | "stock"
+  | "fund"
+  | "bond"
+  | "crypto"
+  | "gold"
+  | "money-market"
+  | "other";
 export type DebtStatus = "healthy" | "watch" | "overdue" | "paid";
 export type DebtStatusSource = "auto" | "manual";
 export type TaskStatus = "todo" | "doing" | "done";
@@ -69,8 +78,31 @@ export type Transaction = {
   tags?: string[];
   note?: string;
   transferTargetAccountId?: string;
-  sourceType?: "shopping" | "debt_installment";
+  sourceType?: "shopping" | "debt_installment" | "investment";
   sourceId?: string;
+};
+
+export type Investment = {
+  id: string;
+  name: string;
+  platform: string;
+  instrument: InvestmentInstrument;
+  status: InvestmentStatus;
+  startDate: string;
+  investedAmount: number;
+  currentValue: number;
+  accountId: string;
+  categoryId?: string;
+  tags?: string[];
+  note?: string;
+};
+
+export type InvestmentValuation = {
+  id: string;
+  investmentId: string;
+  valuedOn: string;
+  currentValue: number;
+  note?: string;
 };
 
 export type BudgetCategoryAllocation = {
@@ -262,6 +294,8 @@ export type AppSnapshot = {
   budgetCycles: BudgetCycle[];
   budgetCategoryAllocations: BudgetCategoryAllocation[];
   transactions: Transaction[];
+  investments: Investment[];
+  investmentValuations: InvestmentValuation[];
   recurringPlans: RecurringPlan[];
   debts: Debt[];
   debtInstallments: DebtInstallment[];
@@ -287,8 +321,57 @@ export type AddTransactionInput = {
   tags?: string[];
   note?: string;
   transferTargetAccountId?: string;
-  sourceType?: "shopping" | "debt_installment";
+  sourceType?: "shopping" | "debt_installment" | "investment";
   sourceId?: string;
+};
+
+export type UpdateTransactionInput = {
+  transactionId: string;
+  title: string;
+  kind: TransactionKind;
+  amount: number;
+  occurredOn: string;
+  accountId: string;
+  categoryId?: string;
+  cycleId?: string;
+  merchant?: string;
+  tags?: string[];
+  note?: string;
+  transferTargetAccountId?: string;
+};
+
+export type AddInvestmentInput = {
+  name: string;
+  platform: string;
+  instrument: InvestmentInstrument;
+  startDate: string;
+  investedAmount: number;
+  currentValue: number;
+  accountId: string;
+  categoryId?: string;
+  tags?: string[];
+  note?: string;
+  syncToTransaction?: boolean;
+};
+
+export type UpdateInvestmentInput = {
+  investmentId: string;
+  name: string;
+  platform: string;
+  instrument: InvestmentInstrument;
+  status: InvestmentStatus;
+  accountId: string;
+  categoryId?: string;
+  tags?: string[];
+  note?: string;
+};
+
+export type AddInvestmentValuationInput = {
+  investmentId: string;
+  valuedOn: string;
+  currentValue: number;
+  note?: string;
+  syncToTransaction?: boolean;
 };
 
 export type AddAccountInput = {
@@ -303,6 +386,15 @@ export type AddCategoryInput = {
 };
 
 export type AddBudgetCycleInput = {
+  label: string;
+  startOn: string;
+  endOn: string;
+  targetAmount: number;
+  status: BudgetCycleStatus;
+};
+
+export type UpdateBudgetCycleInput = {
+  cycleId: string;
   label: string;
   startOn: string;
   endOn: string;

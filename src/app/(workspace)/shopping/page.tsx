@@ -282,6 +282,7 @@ function ShoppingRow({
   onEditCancel,
   onEditSubmit,
   onDelete,
+  onMoveToWishlist,
   onProgress,
   onRecordFinance,
   onRestore,
@@ -298,6 +299,7 @@ function ShoppingRow({
   onEditCancel: () => void;
   onEditSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDelete: () => void;
+  onMoveToWishlist: () => void;
   onProgress: () => void;
   onRecordFinance: () => void;
   onRestore: () => void;
@@ -364,6 +366,9 @@ function ShoppingRow({
                 <PencilLine className="mr-2 size-4" strokeWidth={2.2} />
                 Edit
               </InlineActionButton>
+              <InlineActionButton onClick={onMoveToWishlist} variant="ghost">
+                Kembalikan ke wishlist
+              </InlineActionButton>
               <InlineActionButton onClick={onDelete} variant="ghost">
                 <Trash2 className="mr-2 size-4" strokeWidth={2.2} />
                 Hapus
@@ -382,6 +387,9 @@ function ShoppingRow({
               <InlineActionButton onClick={onRestore}>
                 <RotateCcw className="mr-2 size-4" strokeWidth={2.2} />
                 Kembalikan ke buying
+              </InlineActionButton>
+              <InlineActionButton onClick={onMoveToWishlist} variant="ghost">
+                Kembalikan ke wishlist
               </InlineActionButton>
             </>
           )}
@@ -405,6 +413,7 @@ export default function ShoppingPage() {
     snapshot,
     addShoppingItem,
     deleteShoppingItem,
+    moveShoppingToWishlist,
     recordShoppingPurchase,
     setShoppingStatus,
     updateShoppingItem,
@@ -597,6 +606,22 @@ export default function ShoppingPage() {
   async function handleRecordFinance(item: ShoppingItem) {
     await recordShoppingPurchase(item.id);
     setFeedback(`${item.name} dicatat sebagai pengeluaran di finance.`);
+  }
+
+  async function handleMoveToWishlist(item: ShoppingItem) {
+    const hadRecordedPurchase = transactionSourceIds.has(item.id);
+
+    await moveShoppingToWishlist(item.id);
+
+    if (editingId === item.id) {
+      setEditingId("");
+    }
+
+    setFeedback(
+      hadRecordedPurchase
+        ? `"${item.name}" kembali ke wishlist dan transaksi finance terkait ikut dibatalkan.`
+        : `"${item.name}" dikembalikan ke wishlist.`,
+    );
   }
 
   async function handleQuantityChange(item: ShoppingItem, nextQuantity: number) {
@@ -837,6 +862,9 @@ export default function ShoppingPage() {
                         onIncreaseQuantity={() => {
                           void handleQuantityChange(item, item.quantity + 1);
                         }}
+                        onMoveToWishlist={() => {
+                          void handleMoveToWishlist(item);
+                        }}
                         onProgress={() => {
                           void handleProgress(item);
                         }}
@@ -882,6 +910,9 @@ export default function ShoppingPage() {
                   onEditSubmit={() => undefined}
                   onEditToggle={() => undefined}
                   onIncreaseQuantity={() => undefined}
+                  onMoveToWishlist={() => {
+                    void handleMoveToWishlist(item);
+                  }}
                   onProgress={() => undefined}
                   onRecordFinance={() => {
                     void handleRecordFinance(item);
