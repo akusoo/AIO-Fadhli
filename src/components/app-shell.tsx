@@ -461,6 +461,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                 />
               ))}
             </div>
+            
+            <form action="/auth/sign-out" className="mt-4 border-t border-[var(--border)] pt-4" method="post">
+              <button
+                className="inline-flex min-h-10 w-full items-center justify-center rounded-[16px] border border-[var(--border)] bg-[rgba(255,255,255,0.68)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-all duration-150 hover:border-[var(--border-strong)] hover:bg-white"
+                type="submit"
+              >
+                Keluar
+              </button>
+            </form>
           </div>
         </div>
       ) : null}
