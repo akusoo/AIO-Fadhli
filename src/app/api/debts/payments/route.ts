@@ -1,5 +1,5 @@
 import type { PayDebtInput } from "@/lib/domain/models";
-import { buildAppSnapshot, payDebtWithSideEffects } from "@/lib/server/app-backend";
+import { payDebtWithSideEffects } from "@/lib/server/app-backend";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
 export async function POST(request: Request) {
@@ -12,8 +12,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PayDebtInput;
     await payDebtWithSideEffects(context.supabase, context.user.id, body);
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { installmentId: body.installmentId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal membayar cicilan.",

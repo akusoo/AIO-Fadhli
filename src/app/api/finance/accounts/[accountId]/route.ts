@@ -1,5 +1,8 @@
 import type { UpdateAccountInput } from "@/lib/domain/models";
-import { buildAppSnapshot, updateAccount } from "@/lib/server/app-backend";
+import {
+  deleteAccountWithSideEffects,
+  updateAccount,
+} from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -37,11 +40,34 @@ export async function PATCH(
       balance: body.balance,
     });
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { accountId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah akun.",
+      400,
+      context.applyCookies,
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  contextParam: RouteParamsContext<"accountId">,
+) {
+  const context = await getAuthedRouteContext();
+
+  if ("error" in context) {
+    return context.error;
+  }
+
+  try {
+    const { accountId } = await contextParam.params;
+    await deleteAccountWithSideEffects(context.supabase, context.user.id, accountId);
+
+    return okJson({ item: { accountId } }, context.applyCookies);
+  } catch (error) {
+    return errorJson(
+      error instanceof Error ? error.message : "Gagal menghapus akun.",
       400,
       context.applyCookies,
     );

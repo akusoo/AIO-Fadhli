@@ -1,5 +1,4 @@
 import type { AddTaskInput } from "@/lib/domain/models";
-import { buildAppSnapshot } from "@/lib/server/app-backend";
 import { createId } from "@/lib/utils";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
@@ -35,10 +34,8 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
     return okJson(
       {
-        snapshot,
         item: {
           id: createdTask.id,
           title: createdTask.title,

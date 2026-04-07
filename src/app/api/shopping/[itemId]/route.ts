@@ -1,6 +1,5 @@
 import type { UpdateShoppingItemInput } from "@/lib/domain/models";
 import {
-  buildAppSnapshot,
   deleteShoppingItemWithSideEffects,
 } from "@/lib/server/app-backend";
 import {
@@ -41,8 +40,7 @@ export async function PATCH(
       throw error;
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { itemId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah shopping item.",
@@ -65,8 +63,7 @@ export async function DELETE(
   try {
     const { itemId } = await contextParam.params;
     await deleteShoppingItemWithSideEffects(context.supabase, context.user.id, itemId);
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { itemId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menghapus shopping item.",

@@ -3,13 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getAuthedRouteContextMock,
-  buildAppSnapshotMock,
   createTransactionWithSideEffectsMock,
   updateTransactionWithSideEffectsMock,
   deleteTransactionWithSideEffectsMock,
 } = vi.hoisted(() => ({
   getAuthedRouteContextMock: vi.fn(),
-  buildAppSnapshotMock: vi.fn(),
   createTransactionWithSideEffectsMock: vi.fn(),
   updateTransactionWithSideEffectsMock: vi.fn(),
   deleteTransactionWithSideEffectsMock: vi.fn(),
@@ -24,7 +22,6 @@ vi.mock("@/lib/server/routes", async () => {
 });
 
 vi.mock("@/lib/server/app-backend", () => ({
-  buildAppSnapshot: buildAppSnapshotMock,
   createTransactionWithSideEffects: createTransactionWithSideEffectsMock,
   updateTransactionWithSideEffects: updateTransactionWithSideEffectsMock,
   deleteTransactionWithSideEffects: deleteTransactionWithSideEffectsMock,
@@ -36,7 +33,6 @@ import { DELETE, PATCH } from "@/app/api/finance/transactions/[transactionId]/ro
 describe("POST /api/finance/transactions", () => {
   beforeEach(() => {
     getAuthedRouteContextMock.mockReset();
-    buildAppSnapshotMock.mockReset();
     createTransactionWithSideEffectsMock.mockReset();
     updateTransactionWithSideEffectsMock.mockReset();
     deleteTransactionWithSideEffectsMock.mockReset();
@@ -61,14 +57,13 @@ describe("POST /api/finance/transactions", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns snapshot when side effects succeed", async () => {
+  it("returns transaction item when side effects succeed", async () => {
     getAuthedRouteContextMock.mockResolvedValue({
       supabase: {},
       user: { id: "user-1" },
       applyCookies: vi.fn(),
     });
     createTransactionWithSideEffectsMock.mockResolvedValue("trx-1");
-    buildAppSnapshotMock.mockResolvedValue({ transactions: [{ id: "trx-1" }] });
 
     const response = await POST(
       new Request("http://localhost/api/finance/transactions", {
@@ -90,7 +85,7 @@ describe("POST /api/finance/transactions", () => {
     expect(response.status).toBe(200);
     expect(createTransactionWithSideEffectsMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      snapshot: { transactions: [{ id: "trx-1" }] },
+      item: { transactionId: "trx-1" },
     });
   });
 
@@ -123,14 +118,13 @@ describe("POST /api/finance/transactions", () => {
     await expect(response.json()).resolves.toEqual({ error: "duplicate source" });
   });
 
-  it("patches transactions and rebuilds snapshot", async () => {
+  it("patches transactions and returns item payload", async () => {
     getAuthedRouteContextMock.mockResolvedValue({
       supabase: {},
       user: { id: "user-1" },
       applyCookies: vi.fn(),
     });
     updateTransactionWithSideEffectsMock.mockResolvedValue(undefined);
-    buildAppSnapshotMock.mockResolvedValue({ transactions: [{ id: "trx-1", title: "Belanja baru" }] });
 
     const response = await PATCH(
       new Request("http://localhost/api/finance/transactions/trx-1", {
@@ -162,18 +156,17 @@ describe("POST /api/finance/transactions", () => {
       }),
     );
     await expect(response.json()).resolves.toEqual({
-      snapshot: { transactions: [{ id: "trx-1", title: "Belanja baru" }] },
+      item: { transactionId: "trx-1" },
     });
   });
 
-  it("deletes transactions and rebuilds snapshot", async () => {
+  it("deletes transactions and returns item payload", async () => {
     getAuthedRouteContextMock.mockResolvedValue({
       supabase: {},
       user: { id: "user-1" },
       applyCookies: vi.fn(),
     });
     deleteTransactionWithSideEffectsMock.mockResolvedValue(undefined);
-    buildAppSnapshotMock.mockResolvedValue({ transactions: [] });
 
     const response = await DELETE(
       new Request("http://localhost/api/finance/transactions/trx-1", {
@@ -190,7 +183,7 @@ describe("POST /api/finance/transactions", () => {
     expect(response.status).toBe(200);
     expect(deleteTransactionWithSideEffectsMock).toHaveBeenCalledWith({}, "user-1", "trx-1");
     await expect(response.json()).resolves.toEqual({
-      snapshot: { transactions: [] },
+      item: { transactionId: "trx-1" },
     });
   });
 

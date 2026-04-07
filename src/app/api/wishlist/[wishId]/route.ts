@@ -1,5 +1,5 @@
 import type { UpdateWishInput } from "@/lib/domain/models";
-import { buildAppSnapshot, softDeleteById } from "@/lib/server/app-backend";
+import { softDeleteById } from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -38,8 +38,7 @@ export async function PATCH(
       throw error;
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { wishId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah wishlist item.",
@@ -62,8 +61,7 @@ export async function DELETE(
   try {
     const { wishId } = await contextParam.params;
     await softDeleteById(context.supabase, "wish_items", context.user.id, wishId);
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { wishId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menghapus wishlist item.",

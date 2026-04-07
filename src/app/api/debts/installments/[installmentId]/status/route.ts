@@ -1,6 +1,5 @@
 import type { UpdateDebtInstallmentStatusInput } from "@/lib/domain/models";
 import {
-  buildAppSnapshot,
   updateDebtInstallmentStatusWithSideEffects,
 } from "@/lib/server/app-backend";
 import {
@@ -27,8 +26,7 @@ export async function POST(
       ...body,
       installmentId,
     });
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { installmentId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah status installment.",

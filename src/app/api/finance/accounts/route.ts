@@ -1,5 +1,5 @@
 import type { AddAccountInput } from "@/lib/domain/models";
-import { buildAppSnapshot, createAccount } from "@/lib/server/app-backend";
+import { createAccount } from "@/lib/server/app-backend";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
 export async function POST(request: Request) {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
       throw new Error("Saldo awal tidak boleh negatif.");
     }
 
-    await createAccount(
+    const accountId = await createAccount(
       context.supabase,
       context.user.id,
       {
@@ -32,8 +32,7 @@ export async function POST(request: Request) {
       body.clientId,
     );
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { accountId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menambah akun.",

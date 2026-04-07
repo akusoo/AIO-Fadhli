@@ -1,5 +1,4 @@
 import type { AddShoppingItemInput } from "@/lib/domain/models";
-import { buildAppSnapshot } from "@/lib/server/app-backend";
 import { createId } from "@/lib/utils";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
@@ -12,8 +11,9 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as AddShoppingItemInput & { clientId?: string };
+    const itemId = body.clientId ?? createId("shop");
     const { error } = await context.supabase.from("shopping_items").insert({
-      id: body.clientId ?? createId("shop"),
+      id: itemId,
       user_id: context.user.id,
       name: body.name,
       estimated_price: body.estimatedPrice,
@@ -29,8 +29,7 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { itemId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menambah shopping item.",

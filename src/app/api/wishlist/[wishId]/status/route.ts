@@ -1,5 +1,4 @@
 import type { SetWishStatusInput } from "@/lib/domain/models";
-import { buildAppSnapshot } from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -31,8 +30,7 @@ export async function POST(
       throw error;
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { wishId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah status wishlist.",

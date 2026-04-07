@@ -1,6 +1,5 @@
 import type { UpdateInvestmentInput } from "@/lib/domain/models";
 import {
-  buildAppSnapshot,
   softDeleteById,
   updateInvestment,
 } from "@/lib/server/app-backend";
@@ -30,8 +29,7 @@ export async function PATCH(
       investmentId,
     });
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { investmentId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah investasi.",
@@ -54,8 +52,7 @@ export async function DELETE(
   try {
     const { investmentId } = await contextParam.params;
     await softDeleteById(context.supabase, "investments", context.user.id, investmentId);
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { investmentId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menghapus investasi.",

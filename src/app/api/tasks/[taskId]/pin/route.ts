@@ -1,4 +1,3 @@
-import { buildAppSnapshot } from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -43,8 +42,7 @@ export async function POST(
       throw updateError;
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { taskId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah pin task.",

@@ -1,5 +1,5 @@
 import type { UpdateBudgetCycleInput } from "@/lib/domain/models";
-import { buildAppSnapshot, updateBudgetCycle } from "@/lib/server/app-backend";
+import { updateBudgetCycle } from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -44,8 +44,7 @@ export async function PATCH(
       label,
     });
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { cycleId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah budget cycle.",

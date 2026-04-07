@@ -1,7 +1,6 @@
 import type { AddInvestmentValuationInput } from "@/lib/domain/models";
 import {
   addInvestmentValuationWithSideEffects,
-  buildAppSnapshot,
 } from "@/lib/server/app-backend";
 import {
   errorJson,
@@ -37,8 +36,15 @@ export async function POST(
       investmentId,
     });
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson(
+      {
+        item: {
+          investmentId,
+          valuedOn: body.valuedOn,
+        },
+      },
+      context.applyCookies,
+    );
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menyimpan valuasi investasi.",

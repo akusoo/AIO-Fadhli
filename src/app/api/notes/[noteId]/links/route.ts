@@ -1,5 +1,5 @@
 import type { SetNoteLinksInput } from "@/lib/domain/models";
-import { buildAppSnapshot, replaceNoteLinks } from "@/lib/server/app-backend";
+import { replaceNoteLinks } from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -24,8 +24,7 @@ export async function PUT(
       ...body,
       noteId,
     });
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { noteId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah relasi note.",

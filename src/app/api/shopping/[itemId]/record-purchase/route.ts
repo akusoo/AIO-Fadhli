@@ -1,5 +1,4 @@
 import {
-  buildAppSnapshot,
   recordShoppingPurchaseWithSideEffects,
 } from "@/lib/server/app-backend";
 import {
@@ -22,8 +21,7 @@ export async function POST(
   try {
     const { itemId } = await contextParam.params;
     await recordShoppingPurchaseWithSideEffects(context.supabase, context.user.id, itemId);
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { itemId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mencatat shopping purchase.",

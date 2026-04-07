@@ -3,14 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getAuthedRouteContextMock,
-  buildAppSnapshotMock,
   createInvestmentWithSideEffectsMock,
   updateInvestmentMock,
   softDeleteByIdMock,
   addInvestmentValuationWithSideEffectsMock,
 } = vi.hoisted(() => ({
   getAuthedRouteContextMock: vi.fn(),
-  buildAppSnapshotMock: vi.fn(),
   createInvestmentWithSideEffectsMock: vi.fn(),
   updateInvestmentMock: vi.fn(),
   softDeleteByIdMock: vi.fn(),
@@ -26,7 +24,6 @@ vi.mock("@/lib/server/routes", async () => {
 });
 
 vi.mock("@/lib/server/app-backend", () => ({
-  buildAppSnapshot: buildAppSnapshotMock,
   createInvestmentWithSideEffects: createInvestmentWithSideEffectsMock,
   updateInvestment: updateInvestmentMock,
   softDeleteById: softDeleteByIdMock,
@@ -43,7 +40,6 @@ import { POST as POSTInvestmentValuation } from "@/app/api/finance/investments/[
 describe("finance investments routes", () => {
   beforeEach(() => {
     getAuthedRouteContextMock.mockReset();
-    buildAppSnapshotMock.mockReset();
     createInvestmentWithSideEffectsMock.mockReset();
     updateInvestmentMock.mockReset();
     softDeleteByIdMock.mockReset();
@@ -70,14 +66,13 @@ describe("finance investments routes", () => {
     expect(response.status).toBe(401);
   });
 
-  it("creates investment and returns snapshot", async () => {
+  it("creates investment and returns item payload", async () => {
     getAuthedRouteContextMock.mockResolvedValue({
       supabase: {},
       user: { id: "user-1" },
       applyCookies: vi.fn(),
     });
     createInvestmentWithSideEffectsMock.mockResolvedValue("inv-1");
-    buildAppSnapshotMock.mockResolvedValue({ investments: [{ id: "inv-1" }] });
 
     const response = await POSTInvestments(
       new Request("http://localhost/api/finance/investments", {
@@ -102,7 +97,7 @@ describe("finance investments routes", () => {
     expect(response.status).toBe(200);
     expect(createInvestmentWithSideEffectsMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      snapshot: { investments: [{ id: "inv-1" }] },
+      item: { investmentId: "inv-1" },
     });
   });
 
@@ -114,7 +109,6 @@ describe("finance investments routes", () => {
     });
     updateInvestmentMock.mockResolvedValue(undefined);
     softDeleteByIdMock.mockResolvedValue(undefined);
-    buildAppSnapshotMock.mockResolvedValue({ investments: [] });
 
     const patchResponse = await PATCHInvestment(
       new Request("http://localhost/api/finance/investments/inv-1", {
@@ -138,6 +132,9 @@ describe("finance investments routes", () => {
 
     expect(patchResponse.status).toBe(200);
     expect(updateInvestmentMock).toHaveBeenCalled();
+    await expect(patchResponse.json()).resolves.toEqual({
+      item: { investmentId: "inv-1" },
+    });
 
     const deleteResponse = await DELETEInvestment(
       new Request("http://localhost/api/finance/investments/inv-1", { method: "DELETE" }),
@@ -151,16 +148,18 @@ describe("finance investments routes", () => {
 
     expect(deleteResponse.status).toBe(200);
     expect(softDeleteByIdMock).toHaveBeenCalledWith({}, "investments", "user-1", "inv-1");
+    await expect(deleteResponse.json()).resolves.toEqual({
+      item: { investmentId: "inv-1" },
+    });
   });
 
-  it("adds valuation and rebuilds snapshot", async () => {
+  it("adds valuation and returns item payload", async () => {
     getAuthedRouteContextMock.mockResolvedValue({
       supabase: {},
       user: { id: "user-1" },
       applyCookies: vi.fn(),
     });
     addInvestmentValuationWithSideEffectsMock.mockResolvedValue(undefined);
-    buildAppSnapshotMock.mockResolvedValue({ investmentValuations: [{ id: "val-1" }] });
 
     const response = await POSTInvestmentValuation(
       new Request("http://localhost/api/finance/investments/inv-1/valuations", {
@@ -182,7 +181,7 @@ describe("finance investments routes", () => {
     expect(response.status).toBe(200);
     expect(addInvestmentValuationWithSideEffectsMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      snapshot: { investmentValuations: [{ id: "val-1" }] },
+      item: { investmentId: "inv-1", valuedOn: "2026-04-02" },
     });
   });
 });

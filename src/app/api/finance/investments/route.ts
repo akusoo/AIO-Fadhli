@@ -1,6 +1,5 @@
 import type { AddInvestmentInput } from "@/lib/domain/models";
 import {
-  buildAppSnapshot,
   createInvestmentWithSideEffects,
 } from "@/lib/server/app-backend";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
@@ -13,7 +12,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as AddInvestmentInput & { clientId?: string };
+    const body = (await request.json()) as AddInvestmentInput & {
+      clientId?: string;
+      clientAccountId?: string;
+    };
     const name = body.name?.trim();
     const platform = body.platform?.trim();
 
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
     }
 
     if (!body.accountId) {
-      throw new Error("Akun sumber wajib dipilih.");
+      throw new Error("Akun pembayaran modal wajib dipilih.");
     }
 
     if (!body.startDate) {
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
       throw new Error("Nilai investasi tidak valid.");
     }
 
-    await createInvestmentWithSideEffects(
+    const investmentId = await createInvestmentWithSideEffects(
       context.supabase,
       context.user.id,
       {
@@ -46,10 +48,10 @@ export async function POST(request: Request) {
         platform,
       },
       body.clientId,
+      body.clientAccountId,
     );
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { investmentId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menambah investasi.",

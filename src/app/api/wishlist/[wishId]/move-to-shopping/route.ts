@@ -1,4 +1,4 @@
-import { buildAppSnapshot, moveWishToShoppingWithSideEffects } from "@/lib/server/app-backend";
+import { moveWishToShoppingWithSideEffects } from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -19,8 +19,7 @@ export async function POST(
   try {
     const { wishId } = await contextParam.params;
     await moveWishToShoppingWithSideEffects(context.supabase, context.user.id, wishId);
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { wishId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal memindahkan wishlist ke shopping.",

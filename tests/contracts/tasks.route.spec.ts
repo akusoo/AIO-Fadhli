@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getAuthedRouteContextMock, buildAppSnapshotMock, fromMock, insertMock } = vi.hoisted(() => {
+const { getAuthedRouteContextMock, fromMock, insertMock } = vi.hoisted(() => {
   const insert = vi.fn();
 
   return {
     getAuthedRouteContextMock: vi.fn(),
-    buildAppSnapshotMock: vi.fn(),
     insertMock: insert,
     fromMock: vi.fn(() => ({
       insert,
@@ -22,10 +21,6 @@ vi.mock("@/lib/server/routes", async () => {
   };
 });
 
-vi.mock("@/lib/server/app-backend", () => ({
-  buildAppSnapshot: buildAppSnapshotMock,
-}));
-
 import { POST } from "@/app/api/tasks/route";
 
 describe("POST /api/tasks", () => {
@@ -33,7 +28,6 @@ describe("POST /api/tasks", () => {
     fromMock.mockClear();
     insertMock.mockReset();
     getAuthedRouteContextMock.mockReset();
-    buildAppSnapshotMock.mockReset();
   });
 
   it("returns 401/503 guards without mutating", async () => {
@@ -56,9 +50,8 @@ describe("POST /api/tasks", () => {
     expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it("creates a task and returns item plus snapshot", async () => {
+  it("creates a task and returns item payload", async () => {
     insertMock.mockResolvedValue({ error: null });
-    buildAppSnapshotMock.mockResolvedValue({ tasks: [{ id: "task-1" }] });
     getAuthedRouteContextMock.mockResolvedValue({
       supabase: {
         from: fromMock,
@@ -85,7 +78,6 @@ describe("POST /api/tasks", () => {
     expect(response.status).toBe(200);
     expect(fromMock).toHaveBeenCalledWith("tasks");
     await expect(response.json()).resolves.toMatchObject({
-      snapshot: { tasks: [{ id: "task-1" }] },
       item: {
         id: "task-client",
         title: "Task baru",

@@ -1,6 +1,5 @@
 import type { UpdateTransactionInput } from "@/lib/domain/models";
 import {
-  buildAppSnapshot,
   deleteTransactionWithSideEffects,
   updateTransactionWithSideEffects,
 } from "@/lib/server/app-backend";
@@ -30,8 +29,7 @@ export async function PATCH(
       transactionId,
     });
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { transactionId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah transaksi.",
@@ -55,8 +53,7 @@ export async function DELETE(
     const { transactionId } = await contextParam.params;
     await deleteTransactionWithSideEffects(context.supabase, context.user.id, transactionId);
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { transactionId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menghapus transaksi.",

@@ -1,5 +1,5 @@
 import type { AddCategoryInput } from "@/lib/domain/models";
-import { buildAppSnapshot, createCategory } from "@/lib/server/app-backend";
+import { createCategory } from "@/lib/server/app-backend";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
 export async function POST(request: Request) {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
       throw new Error("Nama kategori wajib diisi.");
     }
 
-    await createCategory(
+    const categoryId = await createCategory(
       context.supabase,
       context.user.id,
       {
@@ -27,8 +27,7 @@ export async function POST(request: Request) {
       body.clientId,
     );
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { categoryId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menambah kategori.",

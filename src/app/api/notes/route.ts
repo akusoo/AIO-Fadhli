@@ -1,5 +1,5 @@
 import type { AddNoteInput } from "@/lib/domain/models";
-import { buildAppSnapshot, replaceNoteLinks } from "@/lib/server/app-backend";
+import { replaceNoteLinks } from "@/lib/server/app-backend";
 import { createId } from "@/lib/utils";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
@@ -31,10 +31,8 @@ export async function POST(request: Request) {
       });
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
     return okJson(
       {
-        snapshot,
         item: {
           id: noteId,
           title: body.title,

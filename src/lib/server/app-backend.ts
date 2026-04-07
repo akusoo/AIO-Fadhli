@@ -547,6 +547,46 @@ export async function updateAccount(
   raiseIfError(error);
 }
 
+export async function deleteAccountWithSideEffects(
+  supabase: SupabaseClient,
+  userId: string,
+  accountId: string,
+) {
+  const { count, error: countError } = await supabase
+    .from("accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+  raiseIfError(countError);
+
+  if ((count ?? 0) <= 1) {
+    throw new Error("Minimal harus ada satu akun aktif.");
+  }
+
+  const tableChecks: Array<{ table: string; label: string }> = [
+    { table: "transactions", label: "transaksi" },
+    { table: "investments", label: "investasi" },
+    { table: "recurring_plans", label: "recurring plan" },
+  ];
+
+  for (const check of tableChecks) {
+    const { data, error } = await supabase
+      .from(check.table)
+      .select("id")
+      .eq("user_id", userId)
+      .eq("account_id", accountId)
+      .is("deleted_at", null)
+      .limit(1);
+    raiseIfError(error);
+
+    if ((data ?? []).length > 0) {
+      throw new Error(`Akun masih dipakai oleh ${check.label}. Pindahkan dulu relasinya.`);
+    }
+  }
+
+  await softDeleteById(supabase, "accounts", userId, accountId);
+}
+
 export async function createCategory(
   supabase: SupabaseClient,
   userId: string,
@@ -1366,8 +1406,22 @@ export async function createInvestmentWithSideEffects(
   userId: string,
   input: AddInvestmentInput,
   investmentId = createId("inv"),
+  investmentAccountId = createId("acct"),
 ) {
   const resolvedCategoryId = input.categoryId ?? (await getInvestmentCategoryId(supabase, userId));
+  const investmentAccountOpeningBalance = input.syncToTransaction
+    ? input.currentValue - input.investedAmount
+    : input.currentValue;
+
+  const { error: accountError } = await supabase.from("accounts").insert({
+    id: investmentAccountId,
+    user_id: userId,
+    name: `Investasi • ${input.name}`,
+    type: "bank",
+    balance: investmentAccountOpeningBalance,
+  });
+  raiseIfError(accountError);
+
   const { error } = await supabase.from("investments").insert({
     id: investmentId,
     user_id: userId,
@@ -1378,7 +1432,7 @@ export async function createInvestmentWithSideEffects(
     start_date: input.startDate,
     invested_amount: input.investedAmount,
     current_value: input.currentValue,
-    account_id: input.accountId,
+    account_id: investmentAccountId,
     category_id: resolvedCategoryId ?? null,
     tags: input.tags ?? [],
     note: input.note ?? null,
@@ -1397,15 +1451,14 @@ export async function createInvestmentWithSideEffects(
 
   if (input.syncToTransaction) {
     await createTransactionWithSideEffects(supabase, userId, {
-      title: `Investasi awal • ${input.name}`,
-      kind: "expense",
+      title: `Modal investasi • ${input.name}`,
+      kind: "transfer",
       amount: input.investedAmount,
       occurredOn: input.startDate,
       accountId: input.accountId,
-      categoryId: resolvedCategoryId ?? undefined,
-      cycleId: await getActiveCycleId(supabase, userId),
+      transferTargetAccountId: investmentAccountId,
       tags: ["investasi", input.platform.toLowerCase()],
-      note: "Dicatat otomatis dari modul investasi",
+      note: "Dicatat otomatis dari modul investasi sebagai transfer modal",
       sourceType: "investment",
       sourceId: investmentId,
     });

@@ -3,13 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getAuthedRouteContextMock,
-  buildAppSnapshotMock,
   createAccountMock,
+  deleteAccountWithSideEffectsMock,
   updateAccountMock,
 } = vi.hoisted(() => ({
   getAuthedRouteContextMock: vi.fn(),
-  buildAppSnapshotMock: vi.fn(),
   createAccountMock: vi.fn(),
+  deleteAccountWithSideEffectsMock: vi.fn(),
   updateAccountMock: vi.fn(),
 }));
 
@@ -22,30 +22,29 @@ vi.mock("@/lib/server/routes", async () => {
 });
 
 vi.mock("@/lib/server/app-backend", () => ({
-  buildAppSnapshot: buildAppSnapshotMock,
   createAccount: createAccountMock,
+  deleteAccountWithSideEffects: deleteAccountWithSideEffectsMock,
   updateAccount: updateAccountMock,
 }));
 
 import { POST } from "@/app/api/finance/accounts/route";
-import { PATCH } from "@/app/api/finance/accounts/[accountId]/route";
+import { DELETE, PATCH } from "@/app/api/finance/accounts/[accountId]/route";
 
 describe("Finance accounts routes", () => {
   beforeEach(() => {
     getAuthedRouteContextMock.mockReset();
-    buildAppSnapshotMock.mockReset();
     createAccountMock.mockReset();
+    deleteAccountWithSideEffectsMock.mockReset();
     updateAccountMock.mockReset();
   });
 
-  it("creates account and returns snapshot", async () => {
+  it("creates account and returns item payload", async () => {
     getAuthedRouteContextMock.mockResolvedValue({
       supabase: {},
       user: { id: "user-1" },
       applyCookies: vi.fn(),
     });
     createAccountMock.mockResolvedValue("acct-1");
-    buildAppSnapshotMock.mockResolvedValue({ accounts: [{ id: "acct-1", name: "Jago" }] });
 
     const response = await POST(
       new Request("http://localhost/api/finance/accounts", {
@@ -66,18 +65,17 @@ describe("Finance accounts routes", () => {
     expect(response.status).toBe(200);
     expect(createAccountMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      snapshot: { accounts: [{ id: "acct-1", name: "Jago" }] },
+      item: { accountId: "acct-1" },
     });
   });
 
-  it("updates account and returns snapshot", async () => {
+  it("updates account and returns item payload", async () => {
     getAuthedRouteContextMock.mockResolvedValue({
       supabase: {},
       user: { id: "user-1" },
       applyCookies: vi.fn(),
     });
     updateAccountMock.mockResolvedValue(undefined);
-    buildAppSnapshotMock.mockResolvedValue({ accounts: [{ id: "acct-main", name: "BCA" }] });
 
     const response = await PATCH(
       new Request("http://localhost/api/finance/accounts/acct-main", {
@@ -106,7 +104,7 @@ describe("Finance accounts routes", () => {
       }),
     );
     await expect(response.json()).resolves.toEqual({
-      snapshot: { accounts: [{ id: "acct-main", name: "BCA" }] },
+      item: { accountId: "acct-main" },
     });
   });
 
@@ -128,5 +126,32 @@ describe("Finance accounts routes", () => {
     }
 
     expect(response.status).toBe(401);
+  });
+
+  it("deletes account and returns item payload", async () => {
+    getAuthedRouteContextMock.mockResolvedValue({
+      supabase: {},
+      user: { id: "user-1" },
+      applyCookies: vi.fn(),
+    });
+    deleteAccountWithSideEffectsMock.mockResolvedValue(undefined);
+
+    const response = await DELETE(
+      new Request("http://localhost/api/finance/accounts/acct-1", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ accountId: "acct-1" }) },
+    );
+
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected a response");
+    }
+
+    expect(response.status).toBe(200);
+    expect(deleteAccountWithSideEffectsMock).toHaveBeenCalledWith({}, "user-1", "acct-1");
+    await expect(response.json()).resolves.toEqual({
+      item: { accountId: "acct-1" },
+    });
   });
 });

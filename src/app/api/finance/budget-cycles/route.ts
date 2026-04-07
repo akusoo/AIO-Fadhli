@@ -1,5 +1,5 @@
 import type { AddBudgetCycleInput } from "@/lib/domain/models";
-import { buildAppSnapshot, createBudgetCycle } from "@/lib/server/app-backend";
+import { createBudgetCycle } from "@/lib/server/app-backend";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
 export async function POST(request: Request) {
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       throw new Error("Target budget tidak boleh negatif.");
     }
 
-    await createBudgetCycle(
+    const cycleId = await createBudgetCycle(
       context.supabase,
       context.user.id,
       {
@@ -42,8 +42,7 @@ export async function POST(request: Request) {
       body.clientId,
     );
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { cycleId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menambah budget cycle.",

@@ -62,6 +62,7 @@ type AppStateContextValue = {
   isHydrated: boolean;
   addAccount(input: AddAccountInput): Promise<string>;
   updateAccount(input: UpdateAccountInput): Promise<void>;
+  deleteAccount(accountId: string): Promise<void>;
   addCategory(input: AddCategoryInput): Promise<string>;
   addBudgetCycle(input: AddBudgetCycleInput): Promise<string>;
   updateBudgetCycle(input: UpdateBudgetCycleInput): Promise<void>;
@@ -829,8 +830,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   async function addInvestment(input: AddInvestmentInput) {
     const clientId = createId("inv");
+    const clientAccountId = createId("acct");
+    const investmentAccountOpeningBalance = input.syncToTransaction
+      ? input.currentValue - input.investedAmount
+      : input.currentValue;
 
     applyOptimisticMutation((draft) => {
+      draft.accounts.unshift({
+        id: clientAccountId,
+        name: `Investasi • ${input.name}`,
+        type: "bank",
+        balance: investmentAccountOpeningBalance,
+      });
+
       draft.investments.unshift({
         id: clientId,
         name: input.name,
@@ -840,7 +852,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         startDate: input.startDate,
         investedAmount: input.investedAmount,
         currentValue: input.currentValue,
-        accountId: input.accountId,
+        accountId: clientAccountId,
         categoryId: input.categoryId,
         tags: input.tags ?? [],
         note: input.note,
@@ -852,11 +864,34 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         currentValue: input.currentValue,
         note: input.note,
       });
+
+      if (input.syncToTransaction) {
+        const transactionInput: AddTransactionInput = {
+          title: `Modal investasi • ${input.name}`,
+          kind: "transfer",
+          amount: input.investedAmount,
+          occurredOn: input.startDate,
+          accountId: input.accountId,
+          transferTargetAccountId: clientAccountId,
+          tags: ["investasi", input.platform.toLowerCase()],
+          note: "Dicatat otomatis dari modul investasi sebagai transfer modal",
+          sourceType: "investment",
+          sourceId: clientId,
+        };
+
+        updateAccountBalances(draft, transactionInput);
+        updateCycleSpend(draft, transactionInput);
+        draft.transactions.unshift({
+          id: createId("tx"),
+          ...transactionInput,
+        });
+      }
     });
 
     await syncMutation("/api/finance/investments", "POST", {
       ...input,
       clientId,
+      clientAccountId,
     });
   }
 
@@ -954,6 +989,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       type: input.type,
       balance: input.balance,
     });
+  }
+
+  async function deleteAccount(accountId: string) {
+    applyOptimisticMutation((draft) => {
+      draft.accounts = draft.accounts.filter((item) => item.id !== accountId);
+    });
+
+    await syncMutation(`/api/finance/accounts/${accountId}`, "DELETE");
   }
 
   async function addCategory(input: AddCategoryInput) {
@@ -1623,6 +1666,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         isHydrated,
         addAccount,
         updateAccount,
+        deleteAccount,
         addCategory,
         addBudgetCycle,
         updateBudgetCycle,

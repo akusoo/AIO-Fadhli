@@ -248,6 +248,7 @@ export default function FinancePage() {
   const {
     snapshot,
     addAccount,
+    deleteAccount,
     updateAccount,
     addInvestment,
     addInvestmentValuation,
@@ -622,6 +623,58 @@ export default function FinancePage() {
     setAccountFeedback(`Mode edit aktif untuk akun \"${account.name}\".`);
   }
 
+  async function handleDeleteAccount(accountIdToDelete: string) {
+    if (snapshot.accounts.length <= 1) {
+      setAccountFeedback("Minimal harus ada satu akun aktif.");
+      return;
+    }
+
+    const account = snapshot.accounts.find((item) => item.id === accountIdToDelete);
+
+    if (!account) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Hapus akun "${account.name}"? Pastikan akun ini sudah tidak dipakai transaksi, investasi, atau recurring plan.`,
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    const fallbackAccountId =
+      snapshot.accounts.find((item) => item.id !== accountIdToDelete)?.id ?? "";
+
+    await deleteAccount(accountIdToDelete);
+
+    if (editingAccountId === accountIdToDelete) {
+      resetAccountForm();
+    }
+
+    if (accountId === accountIdToDelete) {
+      setAccountId(fallbackAccountId);
+    }
+
+    if (recurringAccountId === accountIdToDelete) {
+      setRecurringAccountId(fallbackAccountId);
+    }
+
+    if (investmentAccountId === accountIdToDelete) {
+      setInvestmentAccountId(fallbackAccountId);
+    }
+
+    if (transferTargetAccountId === accountIdToDelete) {
+      setTransferTargetAccountId(
+        snapshot.accounts.find(
+          (item) => item.id !== accountIdToDelete && item.id !== accountId,
+        )?.id ?? fallbackAccountId,
+      );
+    }
+
+    setAccountFeedback(`Akun "${account.name}" berhasil dihapus.`);
+  }
+
   async function handleAddCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -751,7 +804,11 @@ export default function FinancePage() {
     setInvestmentNote("");
     setInvestmentStatus("active");
     setInvestmentSyncTransaction(false);
-    setInvestmentFeedback("Investasi baru tersimpan dan langsung masuk ke ringkasan portofolio.");
+    setInvestmentFeedback(
+      investmentSyncTransaction
+        ? "Investasi tersimpan. Akun investasi otomatis dibuat, modal awal tercatat sebagai transfer, dan saldo akun pembayaran langsung berkurang."
+        : "Investasi tersimpan. Akun investasi otomatis dibuat dan langsung masuk ke ringkasan portofolio.",
+    );
   }
 
   function startEditInvestment(investmentId: string) {
@@ -1831,7 +1888,7 @@ export default function FinancePage() {
 
           <div className="grid gap-6 xl:grid-cols-2">
             <SectionCard
-              description="Tambah investasi baru lalu opsional sinkronkan sebagai transaksi expense."
+              description="Tambah investasi baru. Opsi catat modal awal akan tersimpan sebagai transfer dari akun pembayaran ke akun investasi otomatis."
               title="Tambah investasi"
             >
               <form className="grid gap-4 md:grid-cols-2" onSubmit={handleAddInvestment}>
@@ -1919,7 +1976,7 @@ export default function FinancePage() {
                     value={formatNumberInput(investmentCurrentValue)}
                   />
                 </Field>
-                <Field label="Akun sumber">
+                <Field label="Akun pembayaran modal">
                   <Select
                     onChange={(event) => setInvestmentAccountId(event.target.value)}
                     value={investmentAccountId}
@@ -1954,7 +2011,7 @@ export default function FinancePage() {
                     disabled={Boolean(editingInvestmentId)}
                     type="checkbox"
                   />
-                  Catat modal awal ke transaksi finance
+                  Catat modal awal sebagai transaksi transfer ke akun investasi
                 </label>
                 <div className="md:col-span-2 flex flex-wrap items-center gap-3">
                   <ActionButton type="submit">
@@ -2355,12 +2412,18 @@ export default function FinancePage() {
                                 <p className="mt-2 text-sm text-[var(--muted)]">
                                   {share.toFixed(1)}% dari total available cash
                                 </p>
-                                <div className="mt-4">
+                                <div className="mt-4 flex flex-wrap gap-2">
                                   <ActionButton
                                     onClick={() => startEditAccount(account.id)}
                                     variant="ghost"
                                   >
                                     Edit akun
+                                  </ActionButton>
+                                  <ActionButton
+                                    onClick={() => void handleDeleteAccount(account.id)}
+                                    variant="ghost"
+                                  >
+                                    Hapus akun
                                   </ActionButton>
                                 </div>
                               </div>

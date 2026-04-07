@@ -1,5 +1,4 @@
 import type { UpdateNoteInput } from "@/lib/domain/models";
-import { buildAppSnapshot } from "@/lib/server/app-backend";
 import {
   errorJson,
   getAuthedRouteContext,
@@ -34,8 +33,7 @@ export async function PATCH(
       throw error;
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { noteId } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal mengubah note.",

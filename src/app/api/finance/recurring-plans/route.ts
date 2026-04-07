@@ -1,5 +1,4 @@
 import type { AddRecurringPlanInput } from "@/lib/domain/models";
-import { buildAppSnapshot } from "@/lib/server/app-backend";
 import { createId } from "@/lib/utils";
 import { errorJson, getAuthedRouteContext, okJson } from "@/lib/server/routes";
 
@@ -34,8 +33,7 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    const snapshot = await buildAppSnapshot(context.supabase, context.user);
-    return okJson({ snapshot }, context.applyCookies);
+    return okJson({ item: { recurringPlanId: recurringPlan.id } }, context.applyCookies);
   } catch (error) {
     return errorJson(
       error instanceof Error ? error.message : "Gagal menambah recurring plan.",
