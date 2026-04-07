@@ -75,6 +75,46 @@ Untuk mulai menghubungkan project ke Supabase:
 3. Jalankan SQL migration di project Supabase
 4. Buka `/auth/sign-in` untuk login pertama dan bootstrap starter data minimal
 
+### Workflow schema yang disarankan
+
+Repo ini sekarang menyediakan script operasional untuk menghindari drift antara Test dan Production.
+
+Status migration:
+
+```bash
+pnpm db:test:status
+pnpm db:prod:status
+```
+
+Push ke Test dulu:
+
+```bash
+pnpm db:test:push:dry
+pnpm db:test:push
+```
+
+Push ke Production:
+
+```bash
+AIO_ALLOW_PROD=1 pnpm db:prod:push:dry
+AIO_ALLOW_PROD=1 pnpm db:prod:push
+```
+
+Backup schema Production:
+
+```bash
+export SUPABASE_DB_PASSWORD=<db-password>
+AIO_ALLOW_PROD=1 pnpm db:prod:dump
+```
+
+Runbook lengkap ada di [docs/database-operations.md](/Users/fadhlu/personal-projects/AIO-Fadhli/docs/database-operations.md).
+
+Catatan penting:
+
+- Migration tidak di-apply otomatis ke Production setiap ada perubahan file SQL.
+- Jalur yang disarankan tetap: `Test -> verify -> Production`.
+- Guard `AIO_ALLOW_PROD=1` sengaja dipasang supaya push schema production tidak terjadi tanpa sadar.
+
 ### Wishlist link resolver
 
 Untuk production yang stabil, `POST /api/wishlist/resolve-link` bisa memakai Supabase Edge Function sebagai resolver utama marketplace.
