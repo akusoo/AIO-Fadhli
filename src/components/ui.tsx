@@ -202,16 +202,22 @@ export function Field({
   label,
   children,
   hint,
+  error,
 }: {
   label: string;
   children: ReactNode;
   hint?: string;
+  error?: string;
 }) {
   return (
     <label className="flex flex-col gap-2 text-sm">
       <span className="font-medium text-[var(--foreground)]">{label}</span>
       {children}
-      {hint ? <span className="text-xs leading-5 text-[var(--muted)]">{hint}</span> : null}
+      {error ? (
+        <span className="text-xs font-medium leading-5 text-[var(--rose)]">{error}</span>
+      ) : hint ? (
+        <span className="text-xs leading-5 text-[var(--muted)]">{hint}</span>
+      ) : null}
     </label>
   );
 }

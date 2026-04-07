@@ -12,8 +12,28 @@ export default function ProfilePage() {
   const [location, setLocation] = useState(snapshot.session.location);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
 
   const handleSave = () => {
+    const newErrors: { name?: string; email?: string } = {};
+
+    if (!name.trim()) {
+      newErrors.name = "Nama lengkap wajib diisi.";
+    }
+
+    if (!email.trim()) {
+      newErrors.email = "Email wajib diisi.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = "Format email tidak valid.";
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setFeedback("");
+      return;
+    }
+
     setIsSaving(true);
     setFeedback("");
     
@@ -37,16 +57,22 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid max-w-2xl gap-5 md:grid-cols-2">
-          <Field label="Nama Lengkap">
+          <Field error={errors.name} label="Nama Lengkap">
             <Input 
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
+              }}
               value={name} 
             />
           </Field>
           
-          <Field label="Email">
+          <Field error={errors.email} label="Email">
             <Input 
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
+              }}
               type="email"
               value={email} 
             />
