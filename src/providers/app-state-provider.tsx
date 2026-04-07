@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { produce } from "immer";
 import type {
   AddAccountInput,
   AddBudgetCycleInput,
@@ -116,11 +117,14 @@ type OutboxItem = {
 };
 
 function cloneSnapshot(snapshot: AppSnapshot) {
-  return JSON.parse(JSON.stringify(snapshot)) as AppSnapshot;
+  return produce(snapshot, () => {});
 }
 
 function cloneValue<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  if (value && typeof value === "object") {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+  return value;
 }
 
 function dedupeNoteLinks(links: NoteLink[]) {
@@ -208,7 +212,7 @@ function normalizeNotes(notesInput: unknown): Note[] {
 
 function normalizeSnapshot(snapshot: Partial<AppSnapshot>): AppSnapshot {
   const normalized = {
-    ...cloneSnapshot(initialAppSnapshot),
+    ...initialAppSnapshot,
     ...snapshot,
     accounts: snapshot.accounts ?? cloneValue(initialAppSnapshot.accounts),
     categories: snapshot.categories ?? cloneValue(initialAppSnapshot.categories),
@@ -513,12 +517,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const hasLoaded = useRef(false);
   const outboxRef = useRef<OutboxItem[]>([]);
 
-  function applyOptimisticMutation(mutator: (draft: AppSnapshot) => void) {
-    setSnapshot((current) => {
-      const draft = cloneSnapshot(current);
-      mutator(draft);
-      return draft;
-    });
+  function applyOptimisticMutation(mutator: (draft: AppSnapshot) => void | AppSnapshot) {
+    setSnapshot((current) => produce(current, mutator));
   }
 
   function saveOutbox(nextOutbox: OutboxItem[]) {
@@ -677,7 +677,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(snapshot));
+    const timeoutId = setTimeout(() => {
+      window.localStorage.setItem(CACHE_KEY, JSON.stringify(snapshot));
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
   }, [isHydrated, snapshot]);
 
   useEffect(() => {

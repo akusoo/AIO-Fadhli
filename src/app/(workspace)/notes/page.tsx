@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, useDeferredValue, memo, type FormEvent } from "react";
 import { Plus, Search, Sparkles, X } from "lucide-react";
 import {
   ActionButton,
@@ -66,7 +66,43 @@ function matchesNoteQuery(note: Note, query: string) {
   );
 }
 
-function LibraryGroup({
+const NoteRow = memo(function NoteRow({
+  note,
+  isSelected,
+  onSelect,
+}: {
+  note: Note;
+  isSelected: boolean;
+  onSelect: (noteId: string) => void;
+}) {
+  return (
+    <button
+      className={
+        isSelected
+          ? "w-full rounded-[22px] border border-transparent bg-[rgba(16,33,43,0.94)] px-4 py-4 text-left text-white shadow-[0_18px_50px_rgba(16,33,43,0.18)]"
+          : "w-full rounded-[22px] border border-[var(--border)] bg-white/78 px-4 py-4 text-left transition-colors hover:bg-white"
+      }
+      onClick={() => onSelect(note.id)}
+      type="button"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-semibold">{note.title}</p>
+        <Pill tone={groupTone(note)}>{noteContextLabel(note)}</Pill>
+      </div>
+      <p
+        className={
+          isSelected
+            ? "mt-2 text-sm leading-6 text-white/72"
+            : "mt-2 text-sm leading-6 text-[var(--muted)]"
+        }
+      >
+        {buildNotePreview(note.content)}
+      </p>
+    </button>
+  );
+});
+
+const LibraryGroup = memo(function LibraryGroup({
   description,
   notes,
   onSelect,
@@ -91,30 +127,14 @@ function LibraryGroup({
 
       {notes.length ? (
         <div className="space-y-2">
-          {notes.map((note) => {
-            const isSelected = note.id === selectedNoteId;
-
-            return (
-              <button
-                className={
-                  isSelected
-                    ? "w-full rounded-[22px] border border-transparent bg-[rgba(16,33,43,0.94)] px-4 py-4 text-left text-white shadow-[0_18px_50px_rgba(16,33,43,0.18)]"
-                    : "w-full rounded-[22px] border border-[var(--border)] bg-white/78 px-4 py-4 text-left transition-colors hover:bg-white"
-                }
-                key={note.id}
-                onClick={() => onSelect(note.id)}
-                type="button"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold">{note.title}</p>
-                  <Pill tone={groupTone(note)}>{noteContextLabel(note)}</Pill>
-                </div>
-                <p className={isSelected ? "mt-2 text-sm leading-6 text-white/72" : "mt-2 text-sm leading-6 text-[var(--muted)]"}>
-                  {buildNotePreview(note.content)}
-                </p>
-              </button>
-            );
-          })}
+          {notes.map((note) => (
+            <NoteRow
+              isSelected={note.id === selectedNoteId}
+              key={note.id}
+              note={note}
+              onSelect={onSelect}
+            />
+          ))}
         </div>
       ) : (
         <div className="rounded-[20px] bg-[var(--surface)] px-4 py-4 text-sm leading-6 text-[var(--muted)]">
@@ -123,7 +143,262 @@ function LibraryGroup({
       )}
     </div>
   );
-}
+});
+
+const NoteFocus = memo(function NoteFocus({
+  selectedNote,
+  tasks,
+  projects,
+  updateNote,
+  addTask,
+  setNoteLinks,
+}: {
+  selectedNote: Note;
+  tasks: any[];
+  projects: any[];
+  updateNote: (input: any) => Promise<void>;
+  addTask: (input: any) => Promise<any>;
+  setNoteLinks: (input: any) => Promise<void>;
+}) {
+  const [noteDraft, setNoteDraft] = useState({
+    noteId: selectedNote.id,
+    title: selectedNote.title,
+    content: selectedNote.content,
+  });
+
+  const [linkType, setLinkType] = useState<NoteLinkType>("project");
+  const [linkId, setLinkId] = useState("");
+  const [saveFeedback, setSaveFeedback] = useState("");
+  const [linkFeedback, setLinkFeedback] = useState("");
+  const [taskFeedback, setTaskFeedback] = useState("");
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+
+  // Sync draft if selectedNote changes externally (e.g. from library)
+  if (noteDraft.noteId !== selectedNote.id) {
+    setNoteDraft({
+      noteId: selectedNote.id,
+      title: selectedNote.title,
+      content: selectedNote.content,
+    });
+    setSaveFeedback("");
+    setLinkFeedback("");
+    setTaskFeedback("");
+    setEditErrors({});
+  }
+
+  const linkTargets =
+    linkType === "task"
+      ? tasks.map((task) => ({ id: task.id, label: task.title }))
+      : projects.map((project) => ({ id: project.id, label: project.name }));
+
+  async function handleSaveSelectedNote() {
+    if (!noteDraft.title.trim()) {
+      setEditErrors({ title: "Judul note wajib diisi." });
+      return;
+    }
+    setEditErrors({});
+    await updateNote({
+      noteId: selectedNote.id,
+      title: noteDraft.title.trim(),
+      content: noteDraft.content.trim(),
+    });
+    setSaveFeedback("Perubahan note tersimpan.");
+  }
+
+  async function handleAddLink() {
+    if (!linkId) return;
+    await setNoteLinks({
+      noteId: selectedNote.id,
+      links: dedupeLinks([...selectedNote.links, { type: linkType, id: linkId }]),
+    });
+    setLinkId("");
+    setLinkFeedback("Relasi note diperbarui.");
+  }
+
+  async function handleRemoveLink(linkToRemove: NoteLink) {
+    await setNoteLinks({
+      noteId: selectedNote.id,
+      links: selectedNote.links.filter(
+        (link) => !(link.type === linkToRemove.type && link.id === linkToRemove.id),
+      ),
+    });
+    setLinkFeedback("Relasi note diperbarui.");
+  }
+
+  async function handleCreateTaskFromNote() {
+    const nextTitle = noteDraft.title.trim() || selectedNote.title;
+    const nextContent = noteDraft.content.trim() || selectedNote.content;
+    const projectLink = selectedNote.links.find((link) => link.type === "project");
+
+    if (nextTitle !== selectedNote.title || nextContent !== selectedNote.content) {
+      await updateNote({
+        noteId: selectedNote.id,
+        title: nextTitle,
+        content: nextContent,
+      });
+    }
+
+    const createdTask = await addTask({
+      title: nextTitle,
+      projectId: projectLink?.id,
+      note: nextContent || undefined,
+    });
+
+    await setNoteLinks({
+      noteId: selectedNote.id,
+      links: dedupeLinks([...selectedNote.links, { type: "task", id: createdTask.id }]),
+    });
+
+    setTaskFeedback(`Task baru "${createdTask.title}" dibuat dari note ini.`);
+  }
+
+  return (
+    <SectionCard
+      description="Isi note tetap jadi pusat, dengan action penting tetap dekat."
+      title="Focus"
+    >
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-lg font-semibold text-[var(--foreground)]">
+                {selectedNote.title}
+              </p>
+              <Pill tone={groupTone(selectedNote)}>{noteContextLabel(selectedNote)}</Pill>
+            </div>
+          </div>
+          <ActionButton onClick={() => void handleCreateTaskFromNote()}>
+            <Sparkles className="mr-2 size-4" strokeWidth={2.2} />
+            Create task from note
+          </ActionButton>
+        </div>
+
+        <div className="grid gap-4">
+          <Field error={editErrors.title} label="Judul note">
+            <Input
+              onChange={(event) => {
+                setNoteDraft((prev) => ({ ...prev, title: event.target.value }));
+                if (editErrors.title) setEditErrors({});
+              }}
+              value={noteDraft.title}
+            />
+          </Field>
+          <Field label="Isi note">
+            <Textarea
+              className="min-h-44"
+              onChange={(event) =>
+                setNoteDraft((prev) => ({ ...prev, content: event.target.value }))
+              }
+              value={noteDraft.content}
+            />
+          </Field>
+          <div className="flex flex-wrap gap-3">
+            <ActionButton onClick={() => void handleSaveSelectedNote()}>
+              Simpan perubahan
+            </ActionButton>
+            <ActionButton href="/tasks" variant="secondary">
+              Buka Tasks
+            </ActionButton>
+          </div>
+          {saveFeedback ? (
+            <p className="rounded-[20px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
+              {saveFeedback}
+            </p>
+          ) : null}
+          {taskFeedback ? (
+            <p className="rounded-[20px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
+              {taskFeedback}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="border-t border-[var(--border)] pt-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-base font-semibold text-[var(--foreground)]">
+                Linked context
+              </p>
+              <p className="mt-1 text-sm leading-6 text-[var(--muted)]">
+                Relasi ke task dan project tetap opsional dan bisa lebih dari satu.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {selectedNote.links.length ? (
+              selectedNote.links.map((link) => {
+                const label =
+                  link.type === "task"
+                    ? tasks.find((task) => task.id === link.id)?.title ?? "Task"
+                    : projects.find((project) => project.id === link.id)?.name ?? "Project";
+
+                return (
+                  <span
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white/80 px-3 py-2 text-xs font-medium text-[var(--foreground)]"
+                    key={`${link.type}-${link.id}`}
+                  >
+                    <span>
+                      {link.type}: {label}
+                    </span>
+                    <button
+                      className="rounded-full p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                      onClick={() => void handleRemoveLink(link)}
+                      type="button"
+                    >
+                      <X className="size-3.5" strokeWidth={2.2} />
+                    </button>
+                  </span>
+                );
+              })
+            ) : (
+              <div className="rounded-[20px] bg-[var(--surface)] px-4 py-4 text-sm leading-6 text-[var(--muted)]">
+                Note ini masih standalone. Tambahkan relasi jika sudah ada konteks kerja yang
+                jelas.
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_auto]">
+            <Field label="Tambah link">
+              <Select
+                onChange={(event) => {
+                  setLinkType(event.target.value as NoteLinkType);
+                  setLinkId("");
+                }}
+                value={linkType}
+              >
+                <option value="project">Project</option>
+                <option value="task">Task</option>
+              </Select>
+            </Field>
+            <Field label={`Pilih ${linkType}`}>
+              <Select onChange={(event) => setLinkId(event.target.value)} value={linkId}>
+                <option value="">Pilih satu</option>
+                {linkTargets.map((target: any) => (
+                  <option key={target.id} value={target.id}>
+                    {target.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="flex items-end">
+              <ActionButton onClick={() => void handleAddLink()}>
+                <Plus className="mr-2 size-4" strokeWidth={2.2} />
+                Tambah link
+              </ActionButton>
+            </div>
+          </div>
+
+          {linkFeedback ? (
+            <p className="mt-4 rounded-[20px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
+              {linkFeedback}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </SectionCard>
+  );
+});
 
 export default function NotesPage() {
   const { snapshot, addNote, addTask, setNoteLinks, updateNote } = useAppState();
@@ -134,52 +409,32 @@ export default function NotesPage() {
   const [showCreateContext, setShowCreateContext] = useState(false);
   const [selectedNoteId, setSelectedNoteId] = useState(snapshot.notes[0]?.id ?? "");
   const [query, setQuery] = useState("");
-  const [libraryFilter, setLibraryFilter] = useState<"all" | "standalone" | "project" | "task">("all");
-  const [noteDraft, setNoteDraft] = useState({
-    noteId: snapshot.notes[0]?.id ?? "",
-    title: snapshot.notes[0]?.title ?? "",
-    content: snapshot.notes[0]?.content ?? "",
-  });
-  const [linkType, setLinkType] = useState<NoteLinkType>("project");
-  const [linkId, setLinkId] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [libraryFilter, setLibraryFilter] = useState<"all" | "standalone" | "project" | "task">(
+    "all",
+  );
   const [createFeedback, setCreateFeedback] = useState("");
-  const [saveFeedback, setSaveFeedback] = useState("");
-  const [linkFeedback, setLinkFeedback] = useState("");
-  const [taskFeedback, setTaskFeedback] = useState("");
   const [quickErrors, setQuickErrors] = useState<Record<string, string>>({});
-  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
 
   const selectedNote =
     snapshot.notes.find((note) => note.id === selectedNoteId) ?? snapshot.notes[0];
-  const activeDraftTitle =
-    selectedNote && noteDraft.noteId === selectedNote.id
-      ? noteDraft.title
-      : selectedNote?.title ?? "";
-  const activeDraftContent =
-    selectedNote && noteDraft.noteId === selectedNote.id
-      ? noteDraft.content
-      : selectedNote?.content ?? "";
+
+  const filteredNotes = useMemo(
+    () => snapshot.notes.filter((note) => matchesNoteQuery(note, deferredQuery)),
+    [deferredQuery, snapshot.notes],
+  );
 
   const standaloneNotes = useMemo(
-    () =>
-      snapshot.notes.filter(
-        (note) => note.links.length === 0 && matchesNoteQuery(note, query),
-      ),
-    [query, snapshot.notes],
+    () => filteredNotes.filter((note) => note.links.length === 0),
+    [filteredNotes],
   );
   const projectLinkedNotes = useMemo(
-    () =>
-      snapshot.notes.filter((note) =>
-        note.links.some((link) => link.type === "project") && matchesNoteQuery(note, query),
-      ),
-    [query, snapshot.notes],
+    () => filteredNotes.filter((note) => note.links.some((link) => link.type === "project")),
+    [filteredNotes],
   );
   const taskLinkedNotes = useMemo(
-    () =>
-      snapshot.notes.filter(
-        (note) => note.links.some((link) => link.type === "task") && matchesNoteQuery(note, query),
-      ),
-    [query, snapshot.notes],
+    () => filteredNotes.filter((note) => note.links.some((link) => link.type === "task")),
+    [filteredNotes],
   );
 
   const createTargets =
@@ -188,11 +443,6 @@ export default function NotesPage() {
       : createContext === "project"
         ? snapshot.projects.map((project) => ({ id: project.id, label: project.name }))
         : [];
-
-  const linkTargets =
-    linkType === "task"
-      ? snapshot.tasks.map((task) => ({ id: task.id, label: task.title }))
-      : snapshot.projects.map((project) => ({ id: project.id, label: project.name }));
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -228,106 +478,16 @@ export default function NotesPage() {
     setCreateLinkedId("");
     setShowCreateContext(false);
     setSelectedNoteId(createdNote.id);
-    setNoteDraft({
-      noteId: createdNote.id,
-      title: createdNote.title,
-      content: createdNote.content,
-    });
     setQuickErrors({});
     setCreateFeedback(`Note "${createdNote.title}" siap dirapikan di library.`);
-  }
-
-  async function handleSaveSelectedNote() {
-    if (!selectedNote) {
-      return;
-    }
-
-    if (!activeDraftTitle.trim()) {
-      setEditErrors({ title: "Judul note wajib diisi." });
-      return;
-    }
-    
-    setEditErrors({});
-
-    await updateNote({
-      noteId: selectedNote.id,
-      title: activeDraftTitle.trim(),
-      content: activeDraftContent.trim(),
-    });
-
-    setSaveFeedback("Perubahan note tersimpan.");
-  }
-
-  async function handleAddLink() {
-    if (!selectedNote || !linkId) {
-      return;
-    }
-
-    await setNoteLinks({
-      noteId: selectedNote.id,
-      links: dedupeLinks([...selectedNote.links, { type: linkType, id: linkId }]),
-    });
-
-    setLinkId("");
-    setLinkFeedback("Relasi note diperbarui.");
-  }
-
-  async function handleRemoveLink(linkToRemove: NoteLink) {
-    if (!selectedNote) {
-      return;
-    }
-
-    await setNoteLinks({
-      noteId: selectedNote.id,
-      links: selectedNote.links.filter(
-        (link) =>
-          !(link.type === linkToRemove.type && link.id === linkToRemove.id),
-      ),
-    });
-
-    setLinkFeedback("Relasi note diperbarui.");
-  }
-
-  async function handleCreateTaskFromNote() {
-    if (!selectedNote) {
-      return;
-    }
-
-    const nextTitle = activeDraftTitle.trim() || selectedNote.title;
-    const nextContent = activeDraftContent.trim() || selectedNote.content;
-    const projectLink = selectedNote.links.find((link) => link.type === "project");
-
-    if (nextTitle !== selectedNote.title || nextContent !== selectedNote.content) {
-      await updateNote({
-        noteId: selectedNote.id,
-        title: nextTitle,
-        content: nextContent,
-      });
-    }
-
-    const createdTask = await addTask({
-      title: nextTitle,
-      projectId: projectLink?.id,
-      note: nextContent || undefined,
-    });
-
-    await setNoteLinks({
-      noteId: selectedNote.id,
-      links: dedupeLinks([
-        ...selectedNote.links,
-        { type: "task", id: createdTask.id },
-      ]),
-    });
-
-    setTaskFeedback(`Task baru "${createdTask.title}" dibuat dari note ini.`);
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
+        description="Tangkap ide lebih dulu, lalu beri konteks saat memang sudah perlu."
         eyebrow="Core flow / notes"
         title="Notes sekarang jadi ruang capture lalu rapikan."
-        description="Tangkap ide lebih dulu, lalu beri konteks saat memang sudah perlu."
         actions={
           <ActionButton href="/projects" variant="secondary">
             Lihat project context
@@ -344,7 +504,7 @@ export default function NotesPage() {
             <Input
               onChange={(event) => {
                 setTitle(event.target.value);
-                if (quickErrors.title) setQuickErrors(prev => ({ ...prev, title: "" }));
+                if (quickErrors.title) setQuickErrors((prev) => ({ ...prev, title: "" }));
               }}
               placeholder="Contoh: insight flow onboarding"
               value={title}
@@ -380,7 +540,8 @@ export default function NotesPage() {
                   <Select
                     onChange={(event) => {
                       setCreateLinkedId(event.target.value);
-                      if (quickErrors.createLinkedId) setQuickErrors(prev => ({ ...prev, createLinkedId: "" }));
+                      if (quickErrors.createLinkedId)
+                        setQuickErrors((prev) => ({ ...prev, createLinkedId: "" }));
                     }}
                     value={createLinkedId}
                   >
@@ -417,7 +578,7 @@ export default function NotesPage() {
             className="mt-4"
             onChange={(event) => {
               setContent(event.target.value);
-              if (quickErrors.content) setQuickErrors(prev => ({ ...prev, content: "" }));
+              if (quickErrors.content) setQuickErrors((prev) => ({ ...prev, content: "" }));
             }}
             placeholder="Tulis insight, keputusan, referensi, atau ide yang ingin diproses lebih lanjut..."
             value={content}
@@ -475,188 +636,50 @@ export default function NotesPage() {
               />
             ) : null}
             {libraryFilter === "all" || libraryFilter === "project" ? (
-            <div className="border-t border-[var(--border)] pt-6">
-              <LibraryGroup
-                description="Notes yang sudah menjadi bagian dari konteks project."
-                notes={projectLinkedNotes}
-                onSelect={setSelectedNoteId}
-                selectedNoteId={selectedNote?.id ?? ""}
-                title="Linked to projects"
-              />
-            </div>
+              <div className="border-t border-[var(--border)] pt-6">
+                <LibraryGroup
+                  description="Notes yang sudah menjadi bagian dari konteks project."
+                  notes={projectLinkedNotes}
+                  onSelect={setSelectedNoteId}
+                  selectedNoteId={selectedNote?.id ?? ""}
+                  title="Linked to projects"
+                />
+              </div>
             ) : null}
             {libraryFilter === "all" || libraryFilter === "task" ? (
-            <div className="border-t border-[var(--border)] pt-6">
-              <LibraryGroup
-                description="Notes yang sudah menempel ke task dan dipakai sebagai context kerja."
-                notes={taskLinkedNotes}
-                onSelect={setSelectedNoteId}
-                selectedNoteId={selectedNote?.id ?? ""}
-                title="Linked to tasks"
-              />
-            </div>
+              <div className="border-t border-[var(--border)] pt-6">
+                <LibraryGroup
+                  description="Notes yang sudah menempel ke task dan dipakai sebagai context kerja."
+                  notes={taskLinkedNotes}
+                  onSelect={setSelectedNoteId}
+                  selectedNoteId={selectedNote?.id ?? ""}
+                  title="Linked to tasks"
+                />
+              </div>
             ) : null}
           </div>
         </SectionCard>
 
-        <SectionCard
-          description="Isi note tetap jadi pusat, dengan action penting tetap dekat."
-          title="Focus"
-        >
-          {!selectedNote ? (
+        {selectedNote ? (
+          <NoteFocus
+            addTask={addTask}
+            projects={snapshot.projects}
+            selectedNote={selectedNote}
+            setNoteLinks={setNoteLinks}
+            tasks={snapshot.tasks}
+            updateNote={updateNote}
+          />
+        ) : (
+          <SectionCard
+            description="Isi note tetap jadi pusat, dengan action penting tetap dekat."
+            title="Focus"
+          >
             <EmptyState
               description="Buat note baru atau pilih note dari library untuk mulai merapikan isi, relasi, dan action lanjutannya."
               title="Belum ada note terpilih"
             />
-          ) : (
-            <div className="space-y-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-lg font-semibold text-[var(--foreground)]">
-                      {selectedNote.title}
-                    </p>
-                    <Pill tone={groupTone(selectedNote)}>{noteContextLabel(selectedNote)}</Pill>
-                  </div>
-                </div>
-
-                <ActionButton onClick={() => void handleCreateTaskFromNote()}>
-                  <Sparkles className="mr-2 size-4" strokeWidth={2.2} />
-                  Create task from note
-                </ActionButton>
-              </div>
-
-              <div className="grid gap-4">
-                <Field error={editErrors.title} label="Judul note">
-                  <Input
-                    onChange={(event) => {
-                      setNoteDraft({
-                        noteId: selectedNote.id,
-                        title: event.target.value,
-                        content: activeDraftContent,
-                      });
-                      if (editErrors.title) setEditErrors({});
-                    }}
-                    value={activeDraftTitle}
-                  />
-                </Field>
-                <Field label="Isi note">
-                  <Textarea
-                    className="min-h-44"
-                    onChange={(event) =>
-                      setNoteDraft({
-                        noteId: selectedNote.id,
-                        title: activeDraftTitle,
-                        content: event.target.value,
-                      })
-                    }
-                    value={activeDraftContent}
-                  />
-                </Field>
-                <div className="flex flex-wrap gap-3">
-                  <ActionButton onClick={() => void handleSaveSelectedNote()}>
-                    Simpan perubahan
-                  </ActionButton>
-                  <ActionButton href="/tasks" variant="secondary">
-                    Buka Tasks
-                  </ActionButton>
-                </div>
-                {saveFeedback ? (
-                  <p className="rounded-[20px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
-                    {saveFeedback}
-                  </p>
-                ) : null}
-                {taskFeedback ? (
-                  <p className="rounded-[20px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
-                    {taskFeedback}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="border-t border-[var(--border)] pt-6">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-base font-semibold text-[var(--foreground)]">
-                      Linked context
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-[var(--muted)]">
-                      Relasi ke task dan project tetap opsional dan bisa lebih dari satu.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {selectedNote.links.length ? (
-                    selectedNote.links.map((link) => {
-                      const label =
-                        link.type === "task"
-                          ? snapshot.tasks.find((task) => task.id === link.id)?.title ?? "Task"
-                          : snapshot.projects.find((project) => project.id === link.id)?.name ??
-                            "Project";
-
-                      return (
-                        <span
-                          className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white/80 px-3 py-2 text-xs font-medium text-[var(--foreground)]"
-                          key={`${link.type}-${link.id}`}
-                        >
-                          <span>{link.type}: {label}</span>
-                          <button
-                            className="rounded-full p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-                            onClick={() => void handleRemoveLink(link)}
-                            type="button"
-                          >
-                            <X className="size-3.5" strokeWidth={2.2} />
-                          </button>
-                        </span>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-[20px] bg-[var(--surface)] px-4 py-4 text-sm leading-6 text-[var(--muted)]">
-                      Note ini masih standalone. Tambahkan relasi jika sudah ada konteks kerja yang jelas.
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-5 grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_auto]">
-                  <Field label="Tambah link">
-                    <Select
-                      onChange={(event) => {
-                        setLinkType(event.target.value as NoteLinkType);
-                        setLinkId("");
-                      }}
-                      value={linkType}
-                    >
-                      <option value="project">Project</option>
-                      <option value="task">Task</option>
-                    </Select>
-                  </Field>
-                  <Field label={`Pilih ${linkType}`}>
-                    <Select onChange={(event) => setLinkId(event.target.value)} value={linkId}>
-                      <option value="">Pilih satu</option>
-                      {linkTargets.map((target) => (
-                        <option key={target.id} value={target.id}>
-                          {target.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <div className="flex items-end">
-                    <ActionButton onClick={() => void handleAddLink()}>
-                      <Plus className="mr-2 size-4" strokeWidth={2.2} />
-                      Tambah link
-                    </ActionButton>
-                  </div>
-                </div>
-
-                {linkFeedback ? (
-                  <p className="mt-4 rounded-[20px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent-strong)]">
-                    {linkFeedback}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          )}
-        </SectionCard>
+          </SectionCard>
+        )}
       </div>
     </div>
   );

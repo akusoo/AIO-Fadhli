@@ -31,6 +31,13 @@ const PROFILE_BOOTSTRAP_RETRY_DELAY_MS = 250;
 const SUPABASE_READ_MAX_ATTEMPTS = 3;
 const SUPABASE_READ_RETRY_DELAY_MS = 400;
 
+type ProfileRow = {
+  id: string;
+  name: string;
+  email: string;
+  location: string;
+};
+
 type AccountRow = {
   id: string;
   name: string;
@@ -384,16 +391,21 @@ async function ensureProfileRow(supabase: SupabaseClient, user: User) {
   }
 }
 
-export async function ensureUserBootstrap(supabase: SupabaseClient, user: User) {
+export async function ensureUserBootstrap(
+  supabase: SupabaseClient,
+  user: User,
+): Promise<ProfileRow> {
   const { data: existingProfile, error: profileError } = await runSupabaseRead(async () =>
     await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
   );
 
   raiseIfError(profileError);
 
-  if (!existingProfile) {
-    await ensureProfileRow(supabase, user);
+  if (existingProfile) {
+    return existingProfile;
   }
+
+  await ensureProfileRow(supabase, user);
 
   if (!(await listStarterPresence(supabase, "categories", user.id))) {
     const { error } = await supabase.from("categories").upsert(
@@ -508,6 +520,13 @@ export async function ensureUserBootstrap(supabase: SupabaseClient, user: User) 
 
     raiseIfError(error);
   }
+
+  const { data: finalProfile, error: finalError } = await runSupabaseRead(async () =>
+    await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+  );
+
+  raiseIfError(finalError);
+  return (finalProfile as unknown) as ProfileRow;
 }
 
 export async function createAccount(
@@ -671,10 +690,9 @@ export async function updateBudgetCycle(
 }
 
 export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Promise<AppSnapshot> {
-  await ensureUserBootstrap(supabase, user);
+  const profile = await ensureUserBootstrap(supabase, user);
 
   const [
-    profileRows,
     accounts,
     categories,
     budgetCycles,
@@ -695,7 +713,6 @@ export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Pr
     shoppingItems,
     reminderRules,
   ] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     listRows(supabase, "accounts", user.id, "created_at", true),
     listRows(supabase, "categories", user.id, "created_at", true),
     listRows(supabase, "budget_cycles", user.id, "start_on", false),
@@ -717,8 +734,8 @@ export async function buildAppSnapshot(supabase: SupabaseClient, user: User): Pr
     listRows(supabase, "reminder_rules", user.id, "created_at", true),
   ]);
 
-  raiseIfError(profileRows.error);
-  const profile = profileRows.data;
+  // profile is already fetched via ensureUserBootstrap
+
 
   const snapshot: AppSnapshot = {
     session: {

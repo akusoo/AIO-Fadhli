@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  memo,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -20,16 +21,8 @@ import {
   SectionCard,
   Select,
 } from "@/components/ui";
-import type {
-  AppSnapshot,
-  Priority,
-  Task,
-  TaskStatus,
-} from "@/lib/domain/models";
-import {
-  getEffectiveInstallmentStatus,
-  getInstallmentPaymentAmount,
-} from "@/lib/debts";
+import type { AppSnapshot, Priority, Task, TaskStatus } from "@/lib/domain/models";
+import { getEffectiveInstallmentStatus, getInstallmentPaymentAmount } from "@/lib/debts";
 import {
   isTaskDueToday,
   isTaskOverdue,
@@ -60,12 +53,7 @@ type DashboardAttentionItem = {
   rank: number;
   dueOn?: string;
   actionLabel: string;
-  actionKind:
-    | "task_done"
-    | "debt_paid"
-    | "shopping_bought"
-    | "shopping_record"
-    | "wish_move";
+  actionKind: "task_done" | "debt_paid" | "shopping_bought" | "shopping_record" | "wish_move";
   tone: "neutral" | "mint" | "amber" | "rose";
   taskId?: string;
   debtId?: string;
@@ -81,43 +69,23 @@ type ShortcutItem = {
 };
 
 function taskRank(task: Task) {
-  if (isTaskOverdue(task)) {
-    return 1;
-  }
-
-  if (isTaskDueToday(task)) {
-    return 3;
-  }
-
-  if (isTaskPinnedToday(task) || isTaskReminderToday(task)) {
-    return 8;
-  }
-
+  if (isTaskOverdue(task)) return 1;
+  if (isTaskDueToday(task)) return 3;
+  if (isTaskPinnedToday(task) || isTaskReminderToday(task)) return 8;
   return 99;
 }
 
 function taskDetail(task: Task) {
+  const context = task.projectId ? "project" : "pribadi";
   if (isTaskOverdue(task)) {
-    return `Task ${task.projectId ? "project" : "pribadi"} • overdue sejak ${formatDate(
-      task.dueOn ?? isoToday(),
-    )}`;
+    return `Task ${context} • overdue sejak ${formatDate(task.dueOn ?? isoToday())}`;
   }
-
   if (isTaskDueToday(task)) {
-    return `Task ${task.projectId ? "project" : "pribadi"} • due hari ini${
-      task.dueTime ? ` jam ${task.dueTime}` : ""
-    }`;
+    return `Task ${context} • due hari ini${task.dueTime ? ` jam ${task.dueTime}` : ""}`;
   }
-
-  if (isTaskPinnedToday(task)) {
-    return `Task ${task.projectId ? "project" : "pribadi"} • di-pin ke today`;
-  }
-
-  if (isTaskReminderToday(task)) {
-    return `Task ${task.projectId ? "project" : "pribadi"} • reminder hari ini`;
-  }
-
-  return `Task ${task.projectId ? "project" : "pribadi"}`;
+  if (isTaskPinnedToday(task)) return `Task ${context} • di-pin ke today`;
+  if (isTaskReminderToday(task)) return `Task ${context} • reminder hari ini`;
+  return `Task ${context}`;
 }
 
 function taskValue(task: Task) {
@@ -126,45 +94,28 @@ function taskValue(task: Task) {
     doing: "Doing",
     done: "Done",
   };
-
-  if (task.dueTime && isTaskDueToday(task)) {
-    return task.dueTime;
-  }
-
+  if (task.dueTime && isTaskDueToday(task)) return task.dueTime;
   return labelByStatus[task.status];
 }
 
 function priorityLabel(priority: Priority) {
-  return {
-    high: "prioritas tinggi",
-    medium: "prioritas sedang",
-    low: "prioritas rendah",
-  }[priority];
+  return { high: "prioritas tinggi", medium: "prioritas sedang", low: "prioritas rendah" }[
+    priority
+  ];
 }
 
 function moduleLabel(module: AttentionModule) {
-  return {
-    task: "Task",
-    debt: "Hutang",
-    shopping: "Belanja",
-    wishlist: "Wishlist",
-  }[module];
+  return { task: "Task", debt: "Hutang", shopping: "Belanja", wishlist: "Wishlist" }[module];
 }
 
 function rowIcon(module: AttentionModule) {
-  if (module === "debt") {
-    return <Wallet className="size-4" strokeWidth={2.2} />;
-  }
-
-  if (module === "shopping") {
-    return <ShoppingCart className="size-4" strokeWidth={2.2} />;
-  }
-
-  if (module === "wishlist") {
-    return <Sparkles className="size-4" strokeWidth={2.2} />;
-  }
-
-  return <Clock3 className="size-4" strokeWidth={2.2} />;
+  const icons = {
+    debt: <Wallet className="size-4" strokeWidth={2.2} />,
+    shopping: <ShoppingCart className="size-4" strokeWidth={2.2} />,
+    wishlist: <Sparkles className="size-4" strokeWidth={2.2} />,
+    task: <Clock3 className="size-4" strokeWidth={2.2} />,
+  };
+  return icons[module] || icons.task;
 }
 
 function toneClassName(tone: DashboardAttentionItem["tone"]) {
@@ -177,14 +128,11 @@ function toneClassName(tone: DashboardAttentionItem["tone"]) {
 }
 
 function progressPercentage(spentAmount: number, targetAmount: number) {
-  if (targetAmount <= 0) {
-    return 0;
-  }
-
+  if (targetAmount <= 0) return 0;
   return Math.min(100, Math.round((spentAmount / targetAmount) * 100));
 }
 
-function buildAttentionItems(snapshot: AppSnapshot) {
+function buildAttentionItems(snapshot: AppSnapshot): DashboardAttentionItem[] {
   const today = isoToday();
 
   const taskItems: DashboardAttentionItem[] = snapshot.tasks
@@ -198,7 +146,7 @@ function buildAttentionItems(snapshot: AppSnapshot) {
     )
     .map((task) => ({
       id: `task-${task.id}`,
-      module: "task" as const,
+      module: "task",
       title: task.title,
       detail: taskDetail(task),
       value: taskValue(task),
@@ -207,7 +155,7 @@ function buildAttentionItems(snapshot: AppSnapshot) {
       rank: taskRank(task),
       dueOn: task.dueOn,
       actionLabel: "Done",
-      actionKind: "task_done" as const,
+      actionKind: "task_done",
       tone: isTaskOverdue(task, today) ? "rose" : "neutral",
       taskId: task.id,
     }));
@@ -220,10 +168,9 @@ function buildAttentionItems(snapshot: AppSnapshot) {
     .map((installment) => {
       const debt = snapshot.debts.find((item) => item.id === installment.debtId);
       const status = getEffectiveInstallmentStatus(installment);
-
       return {
         id: `debt-${installment.id}`,
-        module: "debt" as const,
+        module: "debt",
         title: debt
           ? `${debt.name} • cicilan ${installment.installmentNumber}`
           : `Cicilan ${installment.installmentNumber}`,
@@ -234,7 +181,7 @@ function buildAttentionItems(snapshot: AppSnapshot) {
         rank: status === "overdue" ? 0 : 2,
         dueOn: installment.dueOn,
         actionLabel: "Lunas",
-        actionKind: "debt_paid" as const,
+        actionKind: "debt_paid",
         tone: status === "overdue" ? "rose" : "amber",
         debtId: installment.debtId,
         installmentId: installment.id,
@@ -297,7 +244,7 @@ function buildAttentionItems(snapshot: AppSnapshot) {
     .filter((item) => item.status === "ready")
     .map((item) => ({
       id: `wish-${item.id}`,
-      module: "wishlist" as const,
+      module: "wishlist",
       title: item.name,
       detail: `${priorityLabel(item.priority)} • ${item.note ?? "Siap dipindahkan ke shopping"}`,
       value: formatCompactCurrency(item.targetPrice),
@@ -305,35 +252,21 @@ function buildAttentionItems(snapshot: AppSnapshot) {
       href: "/wishlist",
       rank: item.priority === "high" ? 6 : 7,
       actionLabel: "Pindahkan ke shopping",
-      actionKind: "wish_move" as const,
-      tone: "neutral" as const,
+      actionKind: "wish_move",
+      tone: "neutral",
       wishId: item.id,
     }));
 
   return [...debtItems, ...taskItems, ...shoppingItems, ...wishlistItems]
     .sort((left, right) => {
       const rankDiff = left.rank - right.rank;
-
-      if (rankDiff !== 0) {
-        return rankDiff;
-      }
-
+      if (rankDiff !== 0) return rankDiff;
       if (left.dueOn && right.dueOn) {
         const dueDiff = left.dueOn.localeCompare(right.dueOn);
-
-        if (dueDiff !== 0) {
-          return dueDiff;
-        }
+        if (dueDiff !== 0) return dueDiff;
       }
-
-      if (left.dueOn && !right.dueOn) {
-        return -1;
-      }
-
-      if (!left.dueOn && right.dueOn) {
-        return 1;
-      }
-
+      if (left.dueOn && !right.dueOn) return -1;
+      if (!left.dueOn && right.dueOn) return 1;
       return left.title.localeCompare(right.title);
     })
     .slice(0, 8);
@@ -354,8 +287,7 @@ function buildShortcuts(snapshot: AppSnapshot): ShortcutItem[] {
   ).length;
   const shoppingCount = snapshot.shoppingItems.filter((item) => {
     const isRecorded = snapshot.transactions.some(
-      (transaction) =>
-        transaction.sourceType === "shopping" && transaction.sourceId === item.id,
+      (transaction) => transaction.sourceType === "shopping" && transaction.sourceId === item.id,
     );
     return item.status === "buying" || (item.status === "bought" && !isRecorded);
   }).length;
@@ -364,40 +296,16 @@ function buildShortcuts(snapshot: AppSnapshot): ShortcutItem[] {
     .length;
 
   return [
-    {
-      label: "Tasks",
-      detail: `${taskCount} perlu perhatian`,
-      href: "/tasks",
-    },
-    {
-      label: "Debts",
-      detail: `${dueDebtCount} cicilan dekat`,
-      href: "/debts",
-    },
-    {
-      label: "Shopping",
-      detail: `${shoppingCount} item aktif`,
-      href: "/shopping",
-    },
-    {
-      label: "Wishlist",
-      detail: `${readyWishlistCount} siap dibeli`,
-      href: "/wishlist",
-    },
-    {
-      label: "Projects",
-      detail: `${activeProjectsCount} project aktif`,
-      href: "/projects",
-    },
-    {
-      label: "Notes",
-      detail: `${snapshot.notes.length} catatan`,
-      href: "/notes",
-    },
+    { label: "Tasks", detail: `${taskCount} perlu perhatian`, href: "/tasks" },
+    { label: "Debts", detail: `${dueDebtCount} cicilan dekat`, href: "/debts" },
+    { label: "Shopping", detail: `${shoppingCount} item aktif`, href: "/shopping" },
+    { label: "Wishlist", detail: `${readyWishlistCount} siap dibeli`, href: "/wishlist" },
+    { label: "Projects", detail: `${activeProjectsCount} project aktif`, href: "/projects" },
+    { label: "Notes", detail: `${snapshot.notes.length} catatan`, href: "/notes" },
   ];
 }
 
-function InlineActionButton({
+const InlineActionButton = memo(function InlineActionButton({
   children,
   onClick,
   variant = "secondary",
@@ -423,7 +331,240 @@ function InlineActionButton({
       {children}
     </button>
   );
-}
+});
+
+const QuickTransactionForm = memo(function QuickTransactionForm({
+  accounts,
+  categories,
+  activeCycleId,
+  addTransaction,
+}: {
+  accounts: any[];
+  categories: any[];
+  activeCycleId?: string;
+  addTransaction: (input: any) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [amount, setAmount] = useState("");
+  const [kind, setKind] = useState<"income" | "expense">("expense");
+  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const [feedback, setFeedback] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; title?: string }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!accountId && accounts[0]?.id) {
+      setAccountId(accounts[0].id);
+    }
+  }, [accountId, accounts]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    };
+  }, []);
+
+  function showFeedback(message: string) {
+    setFeedback(message);
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    feedbackTimeoutRef.current = setTimeout(() => setFeedback(""), 2400);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextErrors: { amount?: string; title?: string } = {};
+    const trimmedTitle = title.trim();
+    const parsedAmount = parseNumberInput(amount);
+
+    if (!trimmedTitle) nextErrors.title = "Isi judul transaksi dulu.";
+    if (parsedAmount <= 0) nextErrors.amount = "Isi nominal dulu.";
+
+    if (nextErrors.title || nextErrors.amount) {
+      setFieldErrors(nextErrors);
+      if (nextErrors.title) titleInputRef.current?.focus();
+      else amountInputRef.current?.focus();
+      return;
+    }
+
+    const categoryId = categories.find((cat) => cat.kind === kind)?.id;
+    if (!categoryId || !accountId) {
+      showFeedback("Kategori atau akun belum siap.");
+      return;
+    }
+
+    setFieldErrors({});
+    setIsSubmitting(true);
+    await addTransaction({
+      title: trimmedTitle,
+      kind,
+      amount: parsedAmount,
+      occurredOn: isoToday(),
+      accountId,
+      categoryId,
+      cycleId: activeCycleId,
+    });
+    setIsSubmitting(false);
+
+    setTitle("");
+    setAmount("");
+    showFeedback(kind === "income" ? "Pemasukan tersimpan." : "Pengeluaran tersimpan.");
+  }
+
+  return (
+    <form className="grid gap-4" noValidate onSubmit={handleSubmit}>
+      <Field label="Judul transaksi">
+        <div className="space-y-2">
+          <Input
+            className={fieldErrors.title ? "border-[var(--rose)]" : ""}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              if (fieldErrors.title && event.target.value.trim()) {
+                setFieldErrors((current) => ({ ...current, title: undefined }));
+              }
+            }}
+            placeholder="Contoh: jajan, ongkir, uang masuk"
+            ref={titleInputRef}
+            value={title}
+          />
+          {fieldErrors.title ? (
+            <p className="text-xs text-[var(--rose)]">{fieldErrors.title}</p>
+          ) : null}
+        </div>
+      </Field>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Field label="Jenis">
+          <Select onChange={(e) => setKind(e.target.value as any)} value={kind}>
+            <option value="expense">Pengeluaran</option>
+            <option value="income">Pemasukan</option>
+          </Select>
+        </Field>
+        <Field label="Nominal">
+          <div className="space-y-2">
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
+                Rp
+              </span>
+              <Input
+                className={cn("pl-11", fieldErrors.amount ? "border-[var(--rose)]" : "")}
+                inputMode="numeric"
+                onChange={(event) => {
+                  const val = event.target.value.replace(/\D/g, "");
+                  setAmount(val);
+                  if (fieldErrors.amount && parseNumberInput(val) > 0) {
+                    setFieldErrors((current) => ({ ...current, amount: undefined }));
+                  }
+                }}
+                placeholder="0"
+                ref={amountInputRef}
+                type="text"
+                value={formatNumberInput(amount)}
+              />
+            </div>
+            {fieldErrors.amount ? (
+              <p className="text-xs text-[var(--rose)]">{fieldErrors.amount}</p>
+            ) : null}
+          </div>
+        </Field>
+        <Field label="Akun">
+          <Select onChange={(e) => setAccountId(e.target.value)} value={accountId}>
+            {accounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                {acc.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <ActionButton
+          className="bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-[0_16px_34px_rgba(26,130,121,0.18)] hover:-translate-y-0.5"
+          disabled={isSubmitting}
+          type="submit"
+        >
+          {isSubmitting ? "Menyimpan..." : "Simpan cepat"}
+        </ActionButton>
+        <ActionButton href="/finance" variant="secondary">
+          Form lengkap
+        </ActionButton>
+        {feedback ? (
+          <span className="inline-flex min-h-10 items-center rounded-[16px] border border-[rgba(26,130,121,0.18)] bg-[rgba(236,248,245,0.92)] px-3.5 py-2 text-sm text-[var(--accent-strong)] animate-[pulse_0.7s_ease-out_1]">
+            {feedback}
+          </span>
+        ) : null}
+      </div>
+    </form>
+  );
+});
+
+const AttentionItemComponent = memo(function AttentionItemComponent({
+  item,
+  isActioning,
+  onAction,
+}: {
+  item: DashboardAttentionItem;
+  isActioning: boolean;
+  onAction: (item: DashboardAttentionItem) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4 rounded-[22px] border border-[var(--border)] bg-white/78 p-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className={cn("mt-1 inline-flex rounded-full p-2", toneClassName(item.tone))}>
+          {rowIcon(item.module)}
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-start gap-2">
+            <Pill tone={item.tone}>{moduleLabel(item.module)}</Pill>
+            <Link
+              className="min-w-0 font-semibold text-[var(--foreground)] hover:text-[var(--accent-strong)] [overflow-wrap:anywhere]"
+              href={item.href}
+            >
+              {item.title}
+            </Link>
+          </div>
+          <p className="mt-2 text-sm text-[var(--muted)] [overflow-wrap:anywhere]">
+            {item.detail}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 md:justify-end">
+        <div className="text-right">
+          {item.value ? <p className="font-semibold">{item.value}</p> : null}
+          <p className="mt-1 text-xs text-[var(--muted)]">{item.metaLabel}</p>
+        </div>
+        <InlineActionButton
+          disabled={isActioning}
+          onClick={() => onAction(item)}
+          variant={item.actionKind === "shopping_record" ? "primary" : "secondary"}
+        >
+          {isActioning ? "Memproses..." : item.actionLabel}
+        </InlineActionButton>
+      </div>
+    </div>
+  );
+});
+
+const ShortcutItemComponent = memo(function ShortcutItemComponent({
+  item,
+}: {
+  item: ShortcutItem;
+}) {
+  return (
+    <Link
+      className="flex items-center justify-between rounded-[22px] border border-[var(--border)] bg-white/78 px-4 py-4 transition-colors hover:bg-white"
+      href={item.href}
+    >
+      <div>
+        <p className="font-semibold">{item.label}</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">{item.detail}</p>
+      </div>
+      <ArrowRight className="size-4 text-[var(--muted)]" />
+    </Link>
+  );
+});
 
 export default function DashboardPage() {
   const {
@@ -435,157 +576,53 @@ export default function DashboardPage() {
     setDebtInstallmentStatus,
     setShoppingStatus,
   } = useAppState();
+
   const activeCycle = snapshot.budgetCycles.find((cycle) => cycle.status === "active");
   const attentionItems = useMemo(() => buildAttentionItems(snapshot), [snapshot]);
   const shortcuts = useMemo(() => buildShortcuts(snapshot), [snapshot]);
-  const totalBalance = snapshot.accounts.reduce((sum, account) => sum + account.balance, 0);
-  const [title, setTitle] = useState("");
-  const [amount, setAmount] = useState("");
-  const [kind, setKind] = useState<"income" | "expense">("expense");
-  const [accountId, setAccountId] = useState(snapshot.accounts[0]?.id ?? "");
-  const [feedback, setFeedback] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; title?: string }>({});
+  const totalBalance = useMemo(
+    () => snapshot.accounts.reduce((sum, account) => sum + account.balance, 0),
+    [snapshot.accounts],
+  );
+
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [taskCelebration, setTaskCelebration] = useState("");
-  const titleInputRef = useRef<HTMLInputElement>(null);
-  const amountInputRef = useRef<HTMLInputElement>(null);
-  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const celebrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!accountId && snapshot.accounts[0]?.id) {
-      setAccountId(snapshot.accounts[0].id);
-    }
-  }, [accountId, snapshot.accounts]);
-
-  useEffect(() => {
     return () => {
-      if (feedbackTimeoutRef.current) {
-        clearTimeout(feedbackTimeoutRef.current);
-      }
-
-      if (celebrationTimeoutRef.current) {
-        clearTimeout(celebrationTimeoutRef.current);
-      }
+      if (celebrationTimeoutRef.current) clearTimeout(celebrationTimeoutRef.current);
     };
   }, []);
 
-  function showFeedback(message: string) {
-    setFeedback(message);
-
-    if (feedbackTimeoutRef.current) {
-      clearTimeout(feedbackTimeoutRef.current);
-    }
-
-    feedbackTimeoutRef.current = setTimeout(() => {
-      setFeedback("");
-    }, 2400);
-  }
-
   function celebrateTask(title: string) {
     setTaskCelebration(title);
-
-    if (celebrationTimeoutRef.current) {
-      clearTimeout(celebrationTimeoutRef.current);
-    }
-
-    celebrationTimeoutRef.current = setTimeout(() => {
-      setTaskCelebration("");
-    }, 1800);
-  }
-
-  async function handleQuickTransaction(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextErrors: { amount?: string; title?: string } = {};
-    const trimmedTitle = title.trim();
-    const parsedAmount = parseNumberInput(amount);
-
-    if (!trimmedTitle) {
-      nextErrors.title = "Isi judul transaksi dulu.";
-    }
-
-    if (parsedAmount <= 0) {
-      nextErrors.amount = "Isi nominal dulu.";
-    }
-
-    if (nextErrors.title || nextErrors.amount) {
-      setFieldErrors(nextErrors);
-
-      if (nextErrors.title) {
-        titleInputRef.current?.focus();
-      } else {
-        amountInputRef.current?.focus();
-      }
-
-      return;
-    }
-
-    const categoryId = snapshot.categories.find((category) => category.kind === kind)?.id;
-
-    if (!categoryId || !accountId) {
-      showFeedback("Kategori atau akun belum siap.");
-      return;
-    }
-
-    setFieldErrors({});
-
-    await addTransaction({
-      title: trimmedTitle,
-      kind,
-      amount: parsedAmount,
-      occurredOn: isoToday(),
-      accountId,
-      categoryId,
-      cycleId: activeCycle?.id,
-    });
-
-    setTitle("");
-    setAmount("");
-    showFeedback(
-      kind === "income"
-        ? "Pemasukan tersimpan."
-        : "Pengeluaran tersimpan.",
-    );
+    if (celebrationTimeoutRef.current) clearTimeout(celebrationTimeoutRef.current);
+    celebrationTimeoutRef.current = setTimeout(() => setTaskCelebration(""), 1800);
   }
 
   async function handleAttentionAction(item: DashboardAttentionItem) {
     setActioningId(item.id);
-
     try {
       if (item.actionKind === "task_done" && item.taskId) {
         await moveTask(item.taskId, "done");
         celebrateTask(item.title);
-        return;
-      }
-
-      if (item.actionKind === "debt_paid" && item.debtId && item.installmentId) {
+      } else if (item.actionKind === "debt_paid" && item.debtId && item.installmentId) {
         await setDebtInstallmentStatus({
           debtId: item.debtId,
           installmentId: item.installmentId,
           status: "paid",
           paidOn: isoToday(),
         });
-        return;
-      }
-
-      if (item.actionKind === "shopping_bought" && item.shoppingItemId) {
-        await setShoppingStatus({
-          itemId: item.shoppingItemId,
-          status: "bought",
-        });
-        return;
-      }
-
-      if (item.actionKind === "shopping_record" && item.shoppingItemId) {
+      } else if (item.actionKind === "shopping_bought" && item.shoppingItemId) {
+        await setShoppingStatus({ itemId: item.shoppingItemId, status: "bought" });
+      } else if (item.actionKind === "shopping_record" && item.shoppingItemId) {
         await recordShoppingPurchase(item.shoppingItemId);
-        return;
-      }
-
-      if (item.actionKind === "wish_move" && item.wishId) {
+      } else if (item.actionKind === "wish_move" && item.wishId) {
         await moveWishToShopping(item.wishId);
       }
     } finally {
-      setActioningId((current) => (current === item.id ? null : current));
+      setActioningId(null);
     }
   }
 
@@ -596,9 +633,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5">
       <PageHeader
+        description="Lihat keuangan, catat transaksi, dan tangani yang penting hari ini."
         eyebrow="Core flow / dashboard"
         title="Dashboard yang ringkas dan tenang."
-        description="Lihat keuangan, catat transaksi, dan tangani yang penting hari ini."
       />
 
       <SectionCard
@@ -646,105 +683,12 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <form className="grid gap-4" noValidate onSubmit={handleQuickTransaction}>
-            <Field label="Judul transaksi">
-              <div className="space-y-2">
-                <Input
-                  className={
-                    fieldErrors.title
-                      ? "border-[var(--rose)] focus:border-[var(--rose)] focus:shadow-[0_0_0_4px_rgba(163,71,85,0.1)]"
-                      : ""
-                  }
-                  onChange={(event) => {
-                    const nextValue = event.target.value;
-                    setTitle(nextValue);
-
-                    if (fieldErrors.title && nextValue.trim()) {
-                      setFieldErrors((current) => ({ ...current, title: undefined }));
-                    }
-                  }}
-                  placeholder="Contoh: jajan, ongkir, uang masuk"
-                  ref={titleInputRef}
-                  value={title}
-                />
-                {fieldErrors.title ? (
-                  <p className="text-xs text-[var(--rose)]">{fieldErrors.title}</p>
-                ) : null}
-              </div>
-            </Field>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Jenis">
-                <Select
-                  onChange={(event) => setKind(event.target.value as "income" | "expense")}
-                  value={kind}
-                >
-                  <option value="expense">Pengeluaran</option>
-                  <option value="income">Pemasukan</option>
-                </Select>
-              </Field>
-              <Field label="Nominal">
-                <div className="space-y-2">
-                  <div className="relative">
-                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
-                      Rp
-                    </span>
-                    <Input
-                      className={cn(
-                        "pl-11",
-                        fieldErrors.amount
-                          ? "border-[var(--rose)] focus:border-[var(--rose)] focus:shadow-[0_0_0_4px_rgba(163,71,85,0.1)]"
-                          : "",
-                      )}
-                      inputMode="numeric"
-                      onChange={(event) => {
-                        const nextValue = event.target.value.replace(/\D/g, "");
-                        setAmount(nextValue);
-
-                        if (fieldErrors.amount && parseNumberInput(nextValue) > 0) {
-                          setFieldErrors((current) => ({ ...current, amount: undefined }));
-                        }
-                      }}
-                      placeholder="0"
-                      ref={amountInputRef}
-                      type="text"
-                      value={formatNumberInput(amount)}
-                    />
-                  </div>
-                  {fieldErrors.amount ? (
-                    <p className="text-xs text-[var(--rose)]">{fieldErrors.amount}</p>
-                  ) : null}
-                </div>
-              </Field>
-              <Field label="Akun">
-                <Select
-                  onChange={(event) => setAccountId(event.target.value)}
-                  value={accountId}
-                >
-                  {snapshot.accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <ActionButton
-                className="bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-[0_16px_34px_rgba(26,130,121,0.18)] hover:-translate-y-0.5 hover:bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] hover:brightness-[1.03]"
-                type="submit"
-              >
-                Simpan cepat
-              </ActionButton>
-              <ActionButton href="/finance" variant="secondary">
-                Form lengkap
-              </ActionButton>
-              {feedback ? (
-                <span className="inline-flex min-h-10 items-center rounded-[16px] border border-[rgba(26,130,121,0.18)] bg-[rgba(236,248,245,0.92)] px-3.5 py-2 text-sm text-[var(--accent-strong)] animate-[pulse_0.7s_ease-out_1]">
-                  {feedback}
-                </span>
-              ) : null}
-            </div>
-          </form>
+          <QuickTransactionForm
+            accounts={snapshot.accounts}
+            activeCycleId={activeCycle?.id}
+            addTransaction={addTransaction}
+            categories={snapshot.categories}
+          />
         </div>
       </SectionCard>
 
@@ -767,78 +711,26 @@ export default function DashboardPage() {
         {attentionItems.length ? (
           <div className="space-y-3">
             {attentionItems.map((item) => (
-              <div
-                className="flex flex-col gap-4 rounded-[22px] border border-[var(--border)] bg-white/78 p-4 md:flex-row md:items-center md:justify-between"
+              <AttentionItemComponent
+                isActioning={actioningId === item.id}
                 key={item.id}
-              >
-                <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <span
-                    className={cn(
-                      "mt-1 inline-flex rounded-full p-2",
-                      toneClassName(item.tone),
-                    )}
-                  >
-                    {rowIcon(item.module)}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-start gap-2">
-                      <Pill tone={item.tone}>{moduleLabel(item.module)}</Pill>
-                      <Link
-                        className="min-w-0 font-semibold text-[var(--foreground)] hover:text-[var(--accent-strong)] [overflow-wrap:anywhere]"
-                        href={item.href}
-                      >
-                        {item.title}
-                      </Link>
-                    </div>
-                    <p className="mt-2 text-sm text-[var(--muted)] [overflow-wrap:anywhere]">
-                      {item.detail}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-3 md:justify-end">
-                  <div className="text-right">
-                    {item.value ? <p className="font-semibold">{item.value}</p> : null}
-                    <p className="mt-1 text-xs text-[var(--muted)]">{item.metaLabel}</p>
-                  </div>
-                  <InlineActionButton
-                    disabled={actioningId === item.id}
-                    onClick={() => {
-                      void handleAttentionAction(item);
-                    }}
-                    variant={item.actionKind === "shopping_record" ? "primary" : "secondary"}
-                  >
-                    {actioningId === item.id ? "Memproses..." : item.actionLabel}
-                  </InlineActionButton>
-                </div>
-              </div>
+                item={item}
+                onAction={handleAttentionAction}
+              />
             ))}
           </div>
         ) : (
           <EmptyState
-            title="Tidak ada item mendesak hari ini."
             description="Saat ada hal penting lintas modul, item-nya akan muncul di sini."
+            title="Tidak ada item mendesak hari ini."
           />
         )}
       </SectionCard>
 
-      <SectionCard
-        description="Buka modul kerja utama dari sini."
-        title="Shortcut modul"
-      >
+      <SectionCard description="Buka modul kerja utama dari sini." title="Shortcut modul">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {shortcuts.map((item) => (
-            <Link
-              className="flex items-center justify-between rounded-[22px] border border-[var(--border)] bg-white/78 px-4 py-4 transition-colors hover:bg-white"
-              href={item.href}
-              key={item.label}
-            >
-              <div>
-                <p className="font-semibold">{item.label}</p>
-                <p className="mt-1 text-sm text-[var(--muted)]">{item.detail}</p>
-              </div>
-              <ArrowRight className="size-4 text-[var(--muted)]" />
-            </Link>
+            <ShortcutItemComponent key={item.label} item={item} />
           ))}
         </div>
       </SectionCard>
