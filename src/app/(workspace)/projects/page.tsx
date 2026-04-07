@@ -240,12 +240,14 @@ function createProjectSubtaskDraft(): ProjectSubtaskDraft {
 
 function ProjectModal({
   draft,
+  errors,
   isOpen,
   onChange,
   onClose,
   onSubmit,
 }: {
   draft: AddProjectInput;
+  errors: Record<string, string>;
   isOpen: boolean;
   onChange: (draft: AddProjectInput) => void;
   onClose: () => void;
@@ -280,19 +282,17 @@ function ProjectModal({
         </div>
 
         <form className="mt-6 grid gap-4" onSubmit={onSubmit}>
-          <Field label="Nama project">
+          <Field error={errors?.name} label="Nama project">
             <Input
               onChange={(event) => onChange({ ...draft, name: event.target.value })}
               placeholder="Contoh: Client portal iteration"
-              required
               value={draft.name}
             />
           </Field>
-          <Field label="Focus">
+          <Field error={errors?.focus} label="Focus">
             <Input
               onChange={(event) => onChange({ ...draft, focus: event.target.value })}
               placeholder="Contoh: Validasi flow utama"
-              required
               value={draft.focus}
             />
           </Field>
@@ -338,6 +338,8 @@ export default function ProjectsPage() {
   const [projectFeedback, setProjectFeedback] = useState("");
   const [taskFeedback, setTaskFeedback] = useState("");
   const [noteFeedback, setNoteFeedback] = useState("");
+  const [projectErrors, setProjectErrors] = useState<Record<string, string>>({});
+  const [taskErrors, setTaskErrors] = useState<Record<string, string>>({});
   const [recentCreatedTaskId, setRecentCreatedTaskId] = useState("");
 
   const selectedProject =
@@ -455,6 +457,16 @@ export default function ProjectsPage() {
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const newErrors: Record<string, string> = {};
+    if (!projectDraft.name.trim()) newErrors.name = "Nama project tidak boleh kosong.";
+    if (!projectDraft.focus.trim()) newErrors.focus = "Fokus project perlu diisi.";
+    
+    setProjectErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+
     const createdProject = await addProject({
       name: projectDraft.name.trim(),
       focus: projectDraft.focus.trim(),
@@ -492,9 +504,15 @@ export default function ProjectsPage() {
   async function handleCreateProjectTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!selectedProject || !taskDraft.title.trim()) {
+    if (!selectedProject) {
       return;
     }
+
+    if (!taskDraft.title.trim()) {
+      setTaskErrors({ title: "Judul task wajib diisi." });
+      return;
+    }
+    setTaskErrors({});
 
     const createdTask = await addTask({
       title: taskDraft.title.trim(),
@@ -519,6 +537,7 @@ export default function ProjectsPage() {
 
     setTaskDraft(createProjectTaskDraft());
     setSubtaskDrafts([]);
+    setTaskErrors({});
     setIsCreateTaskOpen(false);
     setShowTaskScheduleFields(false);
     setShowTaskSubtasks(false);
@@ -702,16 +721,16 @@ export default function ProjectsPage() {
                   {isCreateTaskOpen ? (
                     <form className="mt-5 space-y-5" onSubmit={handleCreateProjectTask}>
                       <div className="grid gap-4 md:grid-cols-2">
-                        <Field label="Judul task">
+                        <Field error={taskErrors.title} label="Judul task">
                           <Input
-                            onChange={(event) =>
+                            onChange={(event) => {
                               setTaskDraft((current) => ({
                                 ...current,
                                 title: event.target.value,
-                              }))
-                            }
+                              }));
+                              if (taskErrors.title) setTaskErrors({});
+                            }}
                             placeholder="Contoh: validasi flow signup"
-                            required
                             value={taskDraft.title}
                           />
                         </Field>
@@ -1214,9 +1233,13 @@ export default function ProjectsPage() {
 
       <ProjectModal
         draft={projectDraft}
+        errors={projectErrors}
         isOpen={isCreateProjectOpen}
         onChange={setProjectDraft}
-        onClose={() => setIsCreateProjectOpen(false)}
+        onClose={() => {
+          setIsCreateProjectOpen(false);
+          setProjectErrors({});
+        }}
         onSubmit={handleCreateProject}
       />
     </>

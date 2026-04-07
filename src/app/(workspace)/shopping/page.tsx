@@ -162,11 +162,13 @@ function InlineActionButton({
 
 function ShoppingEditor({
   draft,
+  errors,
   onChange,
   onCancel,
   onSubmit,
 }: {
   draft: ShoppingDraft;
+  errors?: Record<string, string>;
   onChange: (draft: ShoppingDraft) => void;
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -177,14 +179,13 @@ function ShoppingEditor({
       onSubmit={onSubmit}
     >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Field label="Nama item">
+        <Field error={errors?.name} label="Nama item">
           <Input
             onChange={(event) => onChange({ ...draft, name: event.target.value })}
-            required
             value={draft.name}
           />
         </Field>
-        <Field label="Estimasi harga">
+        <Field error={errors?.estimatedPrice} label="Estimasi harga">
           <Input
             inputMode="numeric"
             onChange={(event) =>
@@ -193,11 +194,10 @@ function ShoppingEditor({
                 estimatedPrice: formatNumberInput(event.target.value),
               })
             }
-            required
             value={draft.estimatedPrice}
           />
         </Field>
-        <Field label="Quantity">
+        <Field error={errors?.quantity} label="Quantity">
           <Input
             inputMode="numeric"
             min="1"
@@ -207,11 +207,10 @@ function ShoppingEditor({
                 quantity: event.target.value.replace(/\D/g, "") || "1",
               })
             }
-            required
             value={draft.quantity}
           />
         </Field>
-        <Field label="Section">
+        <Field error={errors?.sectionOption} label="Section">
           <Select
             onChange={(event) =>
               onChange({
@@ -233,11 +232,10 @@ function ShoppingEditor({
 
       {draft.sectionOption === "__custom__" ? (
         <div className="mt-4">
-          <Field label="Nama custom section">
+          <Field error={errors?.customSection} label="Nama custom section">
             <Input
               onChange={(event) => onChange({ ...draft, customSection: event.target.value })}
               placeholder="Contoh: Apotek"
-              required
               value={draft.customSection}
             />
           </Field>
@@ -275,6 +273,7 @@ function ShoppingRow({
   item,
   isEditing,
   editDraft,
+  editErrors,
   shoppingRecorded,
   isEditingLocked,
   onDraftChange,
@@ -292,6 +291,7 @@ function ShoppingRow({
   item: ShoppingItem;
   isEditing: boolean;
   editDraft: ShoppingDraft;
+  editErrors?: Record<string, string>;
   shoppingRecorded: boolean;
   isEditingLocked: boolean;
   onDraftChange: (draft: ShoppingDraft) => void;
@@ -399,6 +399,7 @@ function ShoppingRow({
       {isEditing ? (
         <ShoppingEditor
           draft={editDraft}
+          errors={editErrors}
           onCancel={onEditCancel}
           onChange={onDraftChange}
           onSubmit={onEditSubmit}
@@ -421,8 +422,10 @@ export default function ShoppingPage() {
   const [quickDraft, setQuickDraft] = useState<ShoppingDraft>(createShoppingDraft());
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [feedback, setFeedback] = useState("");
-  const [editingId, setEditingId] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<ShoppingDraft>(createShoppingDraft());
+  const [quickErrors, setQuickErrors] = useState<Record<string, string>>({});
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
   const [sectionFilter, setSectionFilter] = useState<string>("__all__");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -519,8 +522,19 @@ export default function ShoppingPage() {
     const quantity = Number(quickDraft.quantity);
     const section = resolveSection(quickDraft);
 
-    if (!quickDraft.name.trim() || estimatedPrice <= 0 || quantity < 1 || !section) {
-      setFeedback("Lengkapi nama item, estimasi harga, quantity, dan section yang valid.");
+    const newErrors: Record<string, string> = {};
+    if (!quickDraft.name.trim()) newErrors.name = "Nama item wajib diisi.";
+    if (estimatedPrice <= 0) newErrors.estimatedPrice = "Estimasi harga harus > 0.";
+    if (quantity < 1) newErrors.quantity = "Jumlah minimal 1.";
+    if (!section) newErrors.sectionOption = "Section belum diatur.";
+    if (quickDraft.sectionOption === "__custom__" && !quickDraft.customSection.trim()) {
+      newErrors.customSection = "Nama custom section harus diisi";
+    }
+
+    setQuickErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setFeedback("");
       return;
     }
 
@@ -550,8 +564,19 @@ export default function ShoppingPage() {
     const quantity = Number(editDraft.quantity);
     const section = resolveSection(editDraft);
 
-    if (!editDraft.name.trim() || estimatedPrice <= 0 || quantity < 1 || !section) {
-      setFeedback("Masih ada field item belanja yang belum valid.");
+    const newErrors: Record<string, string> = {};
+    if (!editDraft.name.trim()) newErrors.name = "Nama item wajib diisi.";
+    if (estimatedPrice <= 0) newErrors.estimatedPrice = "Estimasi harga harus > 0.";
+    if (quantity < 1) newErrors.quantity = "Jumlah minimal 1.";
+    if (!section) newErrors.sectionOption = "Section belum diatur.";
+    if (editDraft.sectionOption === "__custom__" && !editDraft.customSection.trim()) {
+      newErrors.customSection = "Nama custom section harus diisi";
+    }
+
+    setEditErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setFeedback("");
       return;
     }
 
@@ -654,56 +679,54 @@ export default function ShoppingPage() {
       />
 
       <SectionCard description="Tambah item secepat mungkin." title="Quick add">
-        <form
-          className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_220px_140px_220px_auto]"
-          onSubmit={handleQuickAdd}
-        >
-          <Field label="Nama item">
+        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px_160px_auto]" onSubmit={handleQuickAdd}>
+          <Field error={quickErrors.name} label="Nama item">
             <Input
-              onChange={(event) =>
-                setQuickDraft((current) => ({ ...current, name: event.target.value }))
-              }
-              placeholder="Contoh: sabun mandi"
-              required
+              onChange={(event) => {
+                setQuickDraft((current) => ({ ...current, name: event.target.value }));
+                if (quickErrors.name) setQuickErrors(prev => ({ ...prev, name: "" }));
+              }}
+              placeholder="Contoh: Gula pasir 1kg"
               value={quickDraft.name}
             />
           </Field>
-          <Field label="Estimasi harga">
+          <Field error={quickErrors.estimatedPrice} label="Estimasi harga">
             <Input
               inputMode="numeric"
-              onChange={(event) =>
+              onChange={(event) => {
                 setQuickDraft((current) => ({
                   ...current,
                   estimatedPrice: formatNumberInput(event.target.value),
-                }))
-              }
+                }));
+                if (quickErrors.estimatedPrice) setQuickErrors(prev => ({ ...prev, estimatedPrice: "" }));
+              }}
               placeholder="Contoh: 25.000"
-              required
               value={quickDraft.estimatedPrice}
             />
           </Field>
-          <Field label="Quantity">
+          <Field error={quickErrors.quantity} label="Quantity">
             <Input
               inputMode="numeric"
               min="1"
-              onChange={(event) =>
+              onChange={(event) => {
                 setQuickDraft((current) => ({
                   ...current,
                   quantity: event.target.value.replace(/\D/g, "") || "1",
-                }))
-              }
-              required
+                }));
+                if (quickErrors.quantity) setQuickErrors(prev => ({ ...prev, quantity: "" }));
+              }}
               value={quickDraft.quantity}
             />
           </Field>
-          <Field label="Section">
+          <Field error={quickErrors.sectionOption} label="Section">
             <Select
-              onChange={(event) =>
+              onChange={(event) => {
                 setQuickDraft((current) => ({
                   ...current,
                   sectionOption: event.target.value as SectionOption,
-                }))
-              }
+                }));
+                if (quickErrors.sectionOption) setQuickErrors(prev => ({ ...prev, sectionOption: "" }));
+              }}
               value={quickDraft.sectionOption}
             >
               {presetSections.map((section) => (
@@ -724,16 +747,16 @@ export default function ShoppingPage() {
 
         {quickDraft.sectionOption === "__custom__" ? (
           <div className="mt-4">
-            <Field label="Nama custom section">
+            <Field error={quickErrors.customSection} label="Nama custom section">
               <Input
-                onChange={(event) =>
+                onChange={(event) => {
                   setQuickDraft((current) => ({
                     ...current,
                     customSection: event.target.value,
-                  }))
-                }
+                  }));
+                  if (quickErrors.customSection) setQuickErrors(prev => ({ ...prev, customSection: "" }));
+                }}
                 placeholder="Contoh: Apotek"
-                required
                 value={quickDraft.customSection}
               />
             </Field>

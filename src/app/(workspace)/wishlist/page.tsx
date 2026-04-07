@@ -355,6 +355,7 @@ function WishLinkFieldset({
 
 function WishEditor({
   draft,
+  errors,
   isResolvingLink,
   onChange,
   onCancel,
@@ -362,6 +363,7 @@ function WishEditor({
   onSubmit,
 }: {
   draft: WishDraft;
+  errors?: Record<string, string>;
   isResolvingLink: boolean;
   onChange: (draft: WishDraft) => void;
   onCancel: () => void;
@@ -379,14 +381,13 @@ function WishEditor({
         />
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Nama item">
+          <Field error={errors?.name} label="Nama item">
             <Input
               onChange={(event) => onChange({ ...draft, name: event.target.value })}
-              required
               value={draft.name}
             />
           </Field>
-          <Field label="Target harga">
+          <Field error={errors?.targetPrice} label="Target harga">
             <Input
               inputMode="numeric"
               onChange={(event) =>
@@ -395,7 +396,6 @@ function WishEditor({
                   targetPrice: formatNumberInput(event.target.value),
                 })
               }
-              required
               value={draft.targetPrice}
             />
           </Field>
@@ -436,6 +436,7 @@ function WishlistRow({
   isEditing,
   isResolvingEditLink,
   editDraft,
+  editErrors,
   onDraftChange,
   onEditToggle,
   onEditCancel,
@@ -452,6 +453,7 @@ function WishlistRow({
   isEditing: boolean;
   isResolvingEditLink: boolean;
   editDraft: WishDraft;
+  editErrors?: Record<string, string>;
   onDraftChange: (draft: WishDraft) => void;
   onEditToggle: () => void;
   onEditCancel: () => void;
@@ -556,6 +558,7 @@ function WishlistRow({
       {isEditing ? (
         <WishEditor
           draft={editDraft}
+          errors={editErrors}
           isResolvingLink={isResolvingEditLink}
           onCancel={onEditCancel}
           onChange={onDraftChange}
@@ -583,6 +586,8 @@ export default function WishlistPage() {
   const [readyOnly, setReadyOnly] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [editDraft, setEditDraft] = useState<WishDraft>(createWishDraft());
+  const [quickErrors, setQuickErrors] = useState<Record<string, string>>({});
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [isResolvingQuickLink, setIsResolvingQuickLink] = useState(false);
   const [isResolvingEditLink, setIsResolvingEditLink] = useState(false);
 
@@ -716,9 +721,15 @@ export default function WishlistPage() {
     event.preventDefault();
 
     const nextTargetPrice = parseNumberInput(quickDraft.targetPrice);
+    const newErrors: Record<string, string> = {};
 
-    if (!quickDraft.name.trim() || nextTargetPrice <= 0) {
-      setFeedback("Isi nama item dan target harga yang valid dulu.");
+    if (!quickDraft.name.trim()) newErrors.name = "Nama item wajib diisi.";
+    if (nextTargetPrice <= 0) newErrors.targetPrice = "Target harga harus > 0.";
+
+    setQuickErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setFeedback("");
       return;
     }
 
@@ -746,9 +757,15 @@ export default function WishlistPage() {
     event.preventDefault();
 
     const nextTargetPrice = parseNumberInput(editDraft.targetPrice);
+    const newErrors: Record<string, string> = {};
 
-    if (!editDraft.name.trim() || nextTargetPrice <= 0) {
-      setFeedback("Nama item dan target harga masih perlu dirapikan.");
+    if (!editDraft.name.trim()) newErrors.name = "Nama item wajib diisi.";
+    if (nextTargetPrice <= 0) newErrors.targetPrice = "Target harga harus > 0.";
+
+    setEditErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setFeedback("");
       return;
     }
 
@@ -835,27 +852,27 @@ export default function WishlistPage() {
           />
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_220px_180px_auto]">
-            <Field label="Nama item">
+            <Field error={quickErrors.name} label="Nama item">
               <Input
-                onChange={(event) =>
-                  setQuickDraft((current) => ({ ...current, name: event.target.value }))
-                }
+                onChange={(event) => {
+                  setQuickDraft((current) => ({ ...current, name: event.target.value }));
+                  if (quickErrors.name) setQuickErrors(prev => ({ ...prev, name: "" }));
+                }}
                 placeholder="Contoh: Mechanical keyboard"
-                required
                 value={quickDraft.name}
               />
             </Field>
-            <Field label="Target harga">
+            <Field error={quickErrors.targetPrice} label="Target harga">
               <Input
                 inputMode="numeric"
-                onChange={(event) =>
+                onChange={(event) => {
                   setQuickDraft((current) => ({
                     ...current,
                     targetPrice: formatNumberInput(event.target.value),
-                  }))
-                }
+                  }));
+                  if (quickErrors.targetPrice) setQuickErrors(prev => ({ ...prev, targetPrice: "" }));
+                }}
                 placeholder="Contoh: 450.000"
-                required
                 value={quickDraft.targetPrice}
               />
             </Field>

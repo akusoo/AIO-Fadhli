@@ -348,6 +348,9 @@ export default function TasksPage() {
   const [visibleMonth, setVisibleMonth] = useState(() => getMonthStart(new Date(isoToday())));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(isoToday());
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [quickErrors, setQuickErrors] = useState<Record<string, string>>({});
+  const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
+  const [subtaskErrors, setSubtaskErrors] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState<TaskDraft>(createTaskDraft(snapshot.tasks[0]));
 
   const sortedTasks = useMemo(() => [...snapshot.tasks].sort(sortTasks), [snapshot.tasks]);
@@ -500,8 +503,10 @@ export default function TasksPage() {
     event.preventDefault();
 
     if (!quickTitle.trim()) {
+      setQuickErrors({ title: "Judul task wajib diisi." });
       return;
     }
+    setQuickErrors({});
 
     const createdTask = await addTask({
       title: quickTitle.trim(),
@@ -518,6 +523,12 @@ export default function TasksPage() {
     if (!selectedTask) {
       return;
     }
+
+    if (!draft.title.trim()) {
+      setDetailErrors({ title: "Judul task wajib diisi." });
+      return;
+    }
+    setDetailErrors({});
 
     const input: UpdateTaskInput = {
       taskId: selectedTask.id,
@@ -548,9 +559,14 @@ export default function TasksPage() {
   async function handleAddSubtask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!selectedTask || !newSubtaskTitle.trim()) {
+    if (!selectedTask) {
       return;
     }
+    if (!newSubtaskTitle.trim()) {
+      setSubtaskErrors({ title: "Judul subtask wajib diisi." });
+      return;
+    }
+    setSubtaskErrors({});
 
     await addSubtask({
       taskId: selectedTask.id,
@@ -627,11 +643,12 @@ export default function TasksPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Judul task">
+        <Field error={detailErrors.title} label="Judul task">
           <Input
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, title: event.target.value }))
-            }
+            onChange={(event) => {
+              setDraft((current) => ({ ...current, title: event.target.value }));
+              if (detailErrors.title) setDetailErrors({});
+            }}
             value={draft.title}
           />
         </Field>
@@ -812,17 +829,23 @@ export default function TasksPage() {
               subtask={subtask}
             />
           ))}
-          <form className="flex flex-wrap gap-3" onSubmit={handleAddSubtask}>
-            <Input
-              className="min-w-[240px] flex-1"
-              onChange={(event) => setNewSubtaskTitle(event.target.value)}
-              placeholder="Tambah subtask baru"
-              value={newSubtaskTitle}
-            />
-            <ActionButton type="submit">
-              <Plus className="mr-2 size-4" strokeWidth={2.2} />
-              Tambah subtask
-            </ActionButton>
+          <form className="flex flex-col gap-3" onSubmit={handleAddSubtask}>
+            <div className="flex flex-wrap gap-3">
+              <Input
+                className="min-w-[240px] flex-1"
+                onChange={(event) => {
+                  setNewSubtaskTitle(event.target.value);
+                  if (subtaskErrors.title) setSubtaskErrors({});
+                }}
+                placeholder="Tambah subtask baru"
+                value={newSubtaskTitle}
+              />
+              <ActionButton type="submit">
+                <Plus className="mr-2 size-4" strokeWidth={2.2} />
+                Tambah subtask
+              </ActionButton>
+            </div>
+            {subtaskErrors.title && <p className="text-xs font-medium text-[var(--rose)]">{subtaskErrors.title}</p>}
           </form>
         </div>
       </div>
@@ -869,17 +892,23 @@ export default function TasksPage() {
               </button>
             ))}
           </div>
-          <form className="mt-4 flex flex-wrap gap-3" onSubmit={handleQuickCapture}>
-            <Input
-              className="min-w-[220px] flex-1"
-              data-testid="quick-task-input-mobile"
-              onChange={(event) => setQuickTitle(event.target.value)}
-              placeholder="Tulis task cepat lalu rapikan nanti"
-              value={quickTitle}
-            />
-            <ActionButton data-testid="quick-task-submit-mobile" type="submit">
-              Tambah cepat
-            </ActionButton>
+          <form className="mt-4 flex flex-col gap-3" onSubmit={handleQuickCapture}>
+            <div className="flex flex-wrap gap-3">
+              <Input
+                className="min-w-[220px] flex-1"
+                data-testid="quick-task-input-mobile"
+                onChange={(event) => {
+                  setQuickTitle(event.target.value);
+                  if (quickErrors.title) setQuickErrors({});
+                }}
+                placeholder="Tulis task cepat lalu rapikan nanti"
+                value={quickTitle}
+              />
+              <ActionButton data-testid="quick-task-submit-mobile" type="submit">
+                Tambah cepat
+              </ActionButton>
+            </div>
+            {quickErrors.title && <p className="text-xs font-medium text-[var(--rose)]">{quickErrors.title}</p>}
           </form>
         </SectionCard>
       </div>
@@ -908,10 +937,14 @@ export default function TasksPage() {
               <form className="mt-4 space-y-3" onSubmit={handleQuickCapture}>
                 <Input
                   data-testid="quick-task-input-desktop"
-                  onChange={(event) => setQuickTitle(event.target.value)}
+                  onChange={(event) => {
+                    setQuickTitle(event.target.value);
+                    if (quickErrors.title) setQuickErrors({});
+                  }}
                   placeholder="Contoh: follow up feedback hero"
                   value={quickTitle}
                 />
+                {quickErrors.title && <p className="text-xs font-medium text-[var(--rose)]">{quickErrors.title}</p>}
                 <ActionButton data-testid="quick-task-submit-desktop" type="submit">
                   Tambah task
                 </ActionButton>

@@ -146,6 +146,8 @@ export default function NotesPage() {
   const [saveFeedback, setSaveFeedback] = useState("");
   const [linkFeedback, setLinkFeedback] = useState("");
   const [taskFeedback, setTaskFeedback] = useState("");
+  const [quickErrors, setQuickErrors] = useState<Record<string, string>>({});
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
 
   const selectedNote =
     snapshot.notes.find((note) => note.id === selectedNoteId) ?? snapshot.notes[0];
@@ -195,6 +197,20 @@ export default function NotesPage() {
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const newErrors: Record<string, string> = {};
+    if (!title.trim()) newErrors.title = "Judul note wajib diisi.";
+    if (!content.trim()) newErrors.content = "Isi note wajib diisi.";
+    if (createContext !== "standalone" && !createLinkedId) {
+      newErrors.createLinkedId = `Pilih ${createContext} yang valid.`;
+    }
+
+    setQuickErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setCreateFeedback("");
+      return;
+    }
+
     const links =
       createContext === "standalone" || !createLinkedId
         ? []
@@ -217,13 +233,21 @@ export default function NotesPage() {
       title: createdNote.title,
       content: createdNote.content,
     });
+    setQuickErrors({});
     setCreateFeedback(`Note "${createdNote.title}" siap dirapikan di library.`);
   }
 
   async function handleSaveSelectedNote() {
-    if (!selectedNote || !activeDraftTitle.trim()) {
+    if (!selectedNote) {
       return;
     }
+
+    if (!activeDraftTitle.trim()) {
+      setEditErrors({ title: "Judul note wajib diisi." });
+      return;
+    }
+    
+    setEditErrors({});
 
     await updateNote({
       noteId: selectedNote.id,
@@ -316,11 +340,13 @@ export default function NotesPage() {
         title="Quick capture"
       >
         <form className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto]" onSubmit={handleCreate}>
-          <Field label="Judul note">
+          <Field error={quickErrors.title} label="Judul note">
             <Input
-              onChange={(event) => setTitle(event.target.value)}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                if (quickErrors.title) setQuickErrors(prev => ({ ...prev, title: "" }));
+              }}
               placeholder="Contoh: insight flow onboarding"
-              required
               value={title}
             />
           </Field>
@@ -350,9 +376,12 @@ export default function NotesPage() {
                 </Select>
               </Field>
               {createContext !== "standalone" ? (
-                <Field label={`Pilih ${createContext}`}>
+                <Field error={quickErrors.createLinkedId} label={`Pilih ${createContext}`}>
                   <Select
-                    onChange={(event) => setCreateLinkedId(event.target.value)}
+                    onChange={(event) => {
+                      setCreateLinkedId(event.target.value);
+                      if (quickErrors.createLinkedId) setQuickErrors(prev => ({ ...prev, createLinkedId: "" }));
+                    }}
                     value={createLinkedId}
                   >
                     <option value="">Pilih satu</option>
@@ -383,12 +412,14 @@ export default function NotesPage() {
           )}
         </div>
 
-        <Field label="Isi note">
+        <Field error={quickErrors.content} label="Isi note">
           <Textarea
             className="mt-4"
-            onChange={(event) => setContent(event.target.value)}
+            onChange={(event) => {
+              setContent(event.target.value);
+              if (quickErrors.content) setQuickErrors(prev => ({ ...prev, content: "" }));
+            }}
             placeholder="Tulis insight, keputusan, referensi, atau ide yang ingin diproses lebih lanjut..."
-            required
             value={content}
           />
         </Field>
@@ -496,15 +527,16 @@ export default function NotesPage() {
               </div>
 
               <div className="grid gap-4">
-                <Field label="Judul note">
+                <Field error={editErrors.title} label="Judul note">
                   <Input
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setNoteDraft({
                         noteId: selectedNote.id,
                         title: event.target.value,
                         content: activeDraftContent,
-                      })
-                    }
+                      });
+                      if (editErrors.title) setEditErrors({});
+                    }}
                     value={activeDraftTitle}
                   />
                 </Field>

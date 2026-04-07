@@ -222,6 +222,8 @@ export default function DebtsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [showDigestPreview, setShowDigestPreview] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const [editorErrors, setEditorErrors] = useState<Record<string, string>>({});
+  const [newDebtErrors, setNewDebtErrors] = useState<Record<string, string>>({});
   const digest = buildTelegramDigest(snapshot);
 
   const installments = useMemo(() => {
@@ -470,6 +472,20 @@ export default function DebtsPage() {
       return;
     }
 
+    const amount = parseNumberInput(editorAmount);
+    const newErrors: Record<string, string> = {};
+
+    if (!editorDueOn) newErrors.dueOn = "Jatuh tempo wajib diisi.";
+    if (amount <= 0) newErrors.amount = "Nominal cicilan harus > 0.";
+    if (editorStatus === "paid" && !editorPaidOn) newErrors.paidOn = "Tanggal bayar wajib diisi jika lunas.";
+
+    setEditorErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setEditorFeedback("");
+      return;
+    }
+
     await updateDebtInstallment({
       installmentId: selectedInstallment.id,
       dueOn: editorDueOn,
@@ -496,13 +512,18 @@ export default function DebtsPage() {
     const totalMonths = parseNumberInput(newDebtMonths);
     const lateFeeAmount = parseNumberInput(newDebtLateFee);
 
-    if (!newDebtName || !newDebtLender || !newDebtFirstDueOn) {
-      setNewDebtFeedback("Lengkapi nama pinjaman, pemberi pinjaman, dan jatuh tempo pertama.");
-      return;
-    }
+    const newErrors: Record<string, string> = {};
+    if (!newDebtName.trim()) newErrors.name = "Nama pinjaman wajib diisi.";
+    if (!newDebtLender.trim()) newErrors.lender = "Pemberi wajib diisi.";
+    if (!newDebtFirstDueOn) newErrors.firstDueOn = "Jatuh tempo pertama diisi.";
+    if (principalAmount <= 0) newErrors.principal = "Pinjaman > 0.";
+    if (installmentAmount <= 0) newErrors.installmentAmount = "Cicilan > 0.";
+    if (totalMonths <= 0) newErrors.months = "Tenor > 0.";
 
-    if (!principalAmount || !installmentAmount || !totalMonths) {
-      setNewDebtFeedback("Nominal total, nominal cicilan, dan tenor harus lebih dari 0.");
+    setNewDebtErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setNewDebtFeedback("");
       return;
     }
 
@@ -1270,14 +1291,17 @@ export default function DebtsPage() {
                     <option value="paid">lunas</option>
                   </Select>
                 </Field>
-                <Field label="Tanggal jatuh tempo">
+                <Field error={editorErrors.dueOn} label="Tanggal jatuh tempo">
                   <Input
-                    onChange={(event) => setEditorDueOn(event.target.value)}
+                    onChange={(event) => {
+                      setEditorDueOn(event.target.value);
+                      if (editorErrors.dueOn) setEditorErrors(prev => ({ ...prev, dueOn: "" }));
+                    }}
                     type="date"
                     value={editorDueOn}
                   />
                 </Field>
-                <Field label="Nominal cicilan">
+                <Field error={editorErrors.amount} label="Nominal cicilan">
                   <div className="relative">
                     <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
                       Rp
@@ -1305,11 +1329,14 @@ export default function DebtsPage() {
                     />
                   </div>
                 </Field>
-                <Field label="Tanggal bayar">
+                <Field error={editorErrors.paidOn} label="Tanggal bayar">
                   <Input
-                    onChange={(event) => setEditorPaidOn(event.target.value)}
+                    onChange={(event) => {
+                      setEditorPaidOn(event.target.value);
+                      if (editorErrors.paidOn) setEditorErrors(prev => ({ ...prev, paidOn: "" }));
+                    }}
                     type="date"
-                    value={editorPaidOn}
+                    value={editorPaidOn ?? ""}
                   />
                 </Field>
                 <Field label="Catatan">
@@ -1403,21 +1430,27 @@ export default function DebtsPage() {
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <Field label="Nama pinjaman">
+              <Field error={newDebtErrors.name} label="Nama pinjaman">
                 <Input
-                  onChange={(event) => setNewDebtName(event.target.value)}
+                  onChange={(event) => {
+                    setNewDebtName(event.target.value);
+                    if (newDebtErrors.name) setNewDebtErrors(prev => ({ ...prev, name: "" }));
+                  }}
                   placeholder="Contoh: Talangan tiket"
                   value={newDebtName}
                 />
               </Field>
-              <Field label="Pemberi pinjaman">
+              <Field error={newDebtErrors.lender} label="Pemberi pinjaman">
                 <Input
-                  onChange={(event) => setNewDebtLender(event.target.value)}
+                  onChange={(event) => {
+                    setNewDebtLender(event.target.value);
+                    if (newDebtErrors.lender) setNewDebtErrors(prev => ({ ...prev, lender: "" }));
+                  }}
                   placeholder="Contoh: Teman, Shopee PayLater"
                   value={newDebtLender}
                 />
               </Field>
-              <Field label="Nominal total pinjaman">
+              <Field error={newDebtErrors.principal} label="Nominal total pinjaman">
                 <div className="relative">
                   <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
                     Rp
@@ -1425,13 +1458,16 @@ export default function DebtsPage() {
                   <Input
                     className="pl-11"
                     inputMode="numeric"
-                    onChange={(event) => setNewDebtPrincipal(event.target.value.replace(/\D/g, ""))}
+                    onChange={(event) => {
+                      setNewDebtPrincipal(event.target.value.replace(/\D/g, ""));
+                      if (newDebtErrors.principal) setNewDebtErrors(prev => ({ ...prev, principal: "" }));
+                    }}
                     type="text"
                     value={formatNumberInput(newDebtPrincipal)}
                   />
                 </div>
               </Field>
-              <Field label="Nominal cicilan per periode">
+              <Field error={newDebtErrors.installmentAmount} label="Nominal cicilan per periode">
                 <div className="relative">
                   <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
                     Rp
@@ -1439,24 +1475,28 @@ export default function DebtsPage() {
                   <Input
                     className="pl-11"
                     inputMode="numeric"
-                    onChange={(event) =>
-                      setNewDebtInstallmentAmount(event.target.value.replace(/\D/g, ""))
-                    }
+                    onChange={(event) => {
+                      setNewDebtInstallmentAmount(event.target.value.replace(/\D/g, ""));
+                      if (newDebtErrors.installmentAmount) setNewDebtErrors(prev => ({ ...prev, installmentAmount: "" }));
+                    }}
                     type="text"
                     value={formatNumberInput(newDebtInstallmentAmount)}
                   />
                 </div>
               </Field>
-              <Field label="Tenor (bulan)">
+              <Field error={newDebtErrors.months} label="Tenor (bulan)">
                 <Input
                   inputMode="numeric"
-                  onChange={(event) => setNewDebtMonths(event.target.value.replace(/\D/g, ""))}
+                  onChange={(event) => {
+                    setNewDebtMonths(event.target.value.replace(/\D/g, ""));
+                    if (newDebtErrors.months) setNewDebtErrors(prev => ({ ...prev, months: "" }));
+                  }}
                   placeholder="Contoh: 6"
                   type="text"
                   value={newDebtMonths}
                 />
               </Field>
-              <Field label="Jatuh tempo pertama">
+              <Field error={newDebtErrors.firstDueOn} label="Jatuh tempo pertama">
                 <Input
                   onChange={(event) => setNewDebtFirstDueOn(event.target.value)}
                   type="date"

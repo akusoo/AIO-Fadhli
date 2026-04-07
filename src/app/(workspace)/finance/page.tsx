@@ -280,6 +280,7 @@ export default function FinancePage() {
   const [tags, setTags] = useState("");
   const [note, setNote] = useState("");
   const [transactionFeedback, setTransactionFeedback] = useState("");
+  const [transactionErrors, setTransactionErrors] = useState<Record<string, string>>({});
   const [quickAddNotice, setQuickAddNotice] = useState<{
     message: string;
     tone: QuickAddNoticeTone;
@@ -435,6 +436,7 @@ export default function FinancePage() {
     setMerchant("");
     setTags("");
     setNote("");
+    setTransactionErrors({});
   }
 
   function startEditTransaction(transactionId: string) {
@@ -474,10 +476,38 @@ export default function FinancePage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const amount = parseNumberInput(transactionAmount);
+    const newErrors: Record<string, string> = {};
+
+    if (!transactionTitle.trim()) {
+      newErrors.title = "Judul transaksi wajib diisi.";
+    }
+
+    if (amount <= 0 && transactionKind !== "transfer") {
+      newErrors.amount = "Nominal harus lebih dari 0.";
+    } else if (amount <= 0) {
+      newErrors.amount = "Nominal transfer wajib diisi.";
+    }
+
+    if (!accountId) {
+      newErrors.accountId = "Akun asal wajib dipilih.";
+    }
+
+    if (transactionKind === "transfer" && !transferTargetAccountId) {
+      newErrors.transferTargetAccountId = "Akun tujuan wajib dipilih.";
+    }
+
+    setTransactionErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      setTransactionFeedback("");
+      return;
+    }
+
     const transactionInput = {
       title: transactionTitle,
       kind: transactionKind,
-      amount: parseNumberInput(transactionAmount),
+      amount,
       occurredOn,
       accountId,
       categoryId: transactionKind === "transfer" ? undefined : categoryId,
@@ -1013,11 +1043,13 @@ export default function FinancePage() {
                   </p>
                 ) : null}
                 <div className="min-w-0 md:col-span-2 xl:col-span-6">
-                  <Field label="Judul transaksi">
+                  <Field error={transactionErrors.title} label="Judul transaksi">
                     <Input
-                      onChange={(event) => setTransactionTitle(event.target.value)}
+                      onChange={(event) => {
+                        setTransactionTitle(event.target.value);
+                        if (transactionErrors.title) setTransactionErrors(prev => ({ ...prev, title: "" }));
+                      }}
                       placeholder="Contoh: makan siang, billing client, top up"
-                      required
                       value={transactionTitle}
                     />
                   </Field>
@@ -1039,7 +1071,7 @@ export default function FinancePage() {
                   </Field>
                 </div>
                 <div className="min-w-0 xl:col-span-2">
-                  <Field label="Nominal">
+                  <Field error={transactionErrors.amount} label="Nominal">
                     <div className="relative">
                       <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-sm font-medium text-[var(--muted)]">
                         Rp
@@ -1047,11 +1079,11 @@ export default function FinancePage() {
                       <Input
                         className="pl-11"
                         inputMode="numeric"
-                        onChange={(event) =>
-                          setTransactionAmount(event.target.value.replace(/\D/g, ""))
-                        }
+                        onChange={(event) => {
+                          setTransactionAmount(event.target.value.replace(/\D/g, ""));
+                          if (transactionErrors.amount) setTransactionErrors(prev => ({ ...prev, amount: "" }));
+                        }}
                         placeholder="0"
-                        required
                         type="text"
                         value={formatNumberInput(transactionAmount)}
                       />
@@ -1068,8 +1100,14 @@ export default function FinancePage() {
                   </Field>
                 </div>
                 <div className="min-w-0 xl:col-span-2">
-                  <Field label="Akun">
-                    <Select onChange={(event) => setAccountId(event.target.value)} value={accountId}>
+                  <Field error={transactionErrors.accountId} label="Akun">
+                    <Select 
+                      onChange={(event) => {
+                        setAccountId(event.target.value);
+                        if (transactionErrors.accountId) setTransactionErrors(prev => ({ ...prev, accountId: "" }));
+                      }} 
+                      value={accountId}
+                    >
                       {snapshot.accounts.map((account) => (
                         <option key={account.id} value={account.id}>
                           {account.name}
@@ -1080,9 +1118,12 @@ export default function FinancePage() {
                 </div>
                 {transactionKind === "transfer" ? (
                   <div className="min-w-0 xl:col-span-2">
-                    <Field label="Akun tujuan">
+                    <Field error={transactionErrors.transferTargetAccountId} label="Akun tujuan">
                       <Select
-                        onChange={(event) => setTransferTargetAccountId(event.target.value)}
+                        onChange={(event) => {
+                          setTransferTargetAccountId(event.target.value);
+                          if (transactionErrors.transferTargetAccountId) setTransactionErrors(prev => ({ ...prev, transferTargetAccountId: "" }));
+                        }}
                         value={transferTargetAccountId}
                       >
                         {snapshot.accounts
