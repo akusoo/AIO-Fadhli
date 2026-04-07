@@ -190,7 +190,7 @@ test.describe("core workflows", () => {
     await page.getByLabel("Akun pembayaran modal").selectOption({ index: 0 });
     await page.getByLabel("Tags (opsional)").fill("e2e,investasi");
     await page.getByLabel("Catatan").first().fill("Create investment from e2e flow");
-    await page.getByRole("checkbox", { name: /Catat modal awal ke transaksi finance/i }).check();
+    await page.getByRole("checkbox", { name: /Catat modal awal sebagai transaksi transfer ke akun investasi/i }).check();
     await page.getByRole("button", { name: /Simpan investasi/i }).click();
 
     const investmentRow = page.getByTestId(/investment-row-/).filter({ hasText: investmentName }).first();
