@@ -402,7 +402,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                   label="Cari cepat"
                   onClick={openQuickJump}
                 />
-                <div className="hidden items-center gap-3 rounded-[18px] border border-[var(--border)] bg-[rgba(255,255,255,0.76)] px-3 py-2 shadow-[var(--shadow-sm)] sm:flex">
+                <Link
+                  className="hidden items-center gap-3 rounded-[18px] border border-[var(--border)] bg-[rgba(255,255,255,0.76)] px-3 py-2 shadow-[var(--shadow-sm)] transition-all duration-150 hover:border-[var(--border-strong)] hover:shadow-md sm:flex"
+                  href="/profile"
+                  prefetch
+                >
                   <span className="flex size-9 items-center justify-center rounded-[14px] bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent-strong)]">
                     {sessionInitials}
                   </span>
@@ -412,7 +416,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     </p>
                     <p className="truncate text-xs text-[var(--muted)]">{snapshot.session.location}</p>
                   </div>
-                </div>
+                </Link>
               </div>
             </div>
           </header>
@@ -462,14 +466,23 @@ export function AppShell({ children }: { children: ReactNode }) {
               ))}
             </div>
             
-            <form action="/auth/sign-out" className="mt-4 border-t border-[var(--border)] pt-4" method="post">
-              <button
-                className="inline-flex min-h-10 w-full items-center justify-center rounded-[16px] border border-[var(--border)] bg-[rgba(255,255,255,0.68)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-all duration-150 hover:border-[var(--border-strong)] hover:bg-white"
-                type="submit"
+            <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4">
+              <Link
+                className="inline-flex min-h-10 w-full items-center justify-center rounded-[16px] border border-transparent bg-[rgba(26,130,121,0.08)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] transition-colors hover:bg-[rgba(26,130,121,0.14)]"
+                href="/profile"
+                onClick={() => setIsMobileOpen(false)}
               >
-                Keluar
-              </button>
-            </form>
+                Profil Saya
+              </Link>
+              <form action="/auth/sign-out" method="post">
+                <button
+                  className="inline-flex min-h-10 w-full items-center justify-center rounded-[16px] border border-[var(--border)] bg-[rgba(255,255,255,0.68)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-all duration-150 hover:border-[var(--border-strong)] hover:bg-white"
+                  type="submit"
+                >
+                  Keluar
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       ) : null}
