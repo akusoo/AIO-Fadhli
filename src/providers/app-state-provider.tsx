@@ -54,6 +54,7 @@ import {
   getInstallmentPaymentAmount,
   recomputeDebtSummaries,
 } from "@/lib/debts";
+import { AlertCircle } from "lucide-react";
 import { advanceRecurringTask } from "@/lib/tasks";
 import { createId, isoToday } from "@/lib/utils";
 
@@ -510,6 +511,7 @@ function addMonthsToIsoDate(dateText: string, offset: number) {
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<AppSnapshot>(cloneSnapshot(initialAppSnapshot));
   const [isHydrated, setIsHydrated] = useState(false);
+  const [bootError, setBootError] = useState<string | null>(null);
   const hasLoaded = useRef(false);
   const outboxRef = useRef<OutboxItem[]>([]);
 
@@ -645,12 +647,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
 
       hasLoaded.current = true;
+      let hasCache = false;
 
       if (typeof window !== "undefined") {
         const cachedSnapshot = window.localStorage.getItem(CACHE_KEY);
         const cachedOutbox = window.localStorage.getItem(OUTBOX_KEY);
 
         if (cachedSnapshot) {
+          hasCache = true;
           setSnapshot(normalizeSnapshot(JSON.parse(cachedSnapshot) as Partial<AppSnapshot>));
           setIsHydrated(true);
         }
@@ -664,7 +668,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         await fetchSnapshot();
         setIsHydrated(true);
         await flushOutbox();
-      } catch {
+      } catch (error) {
+        if (!hasCache) {
+          setBootError(error instanceof Error ? error.message : "Gagal terhubung ke server backend.");
+        }
         setIsHydrated(true);
       }
     }
@@ -1657,6 +1664,40 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     saveOutbox([]);
     await fetchSnapshot();
+  }
+
+  if (bootError) {
+    return (
+      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-[#FFFCF8] p-6 lg:bg-[#FFFCF9]">
+        <div className="w-full max-w-sm rounded-[24px] border border-[var(--border)] bg-white p-6 shadow-[var(--shadow-sm)] text-center backdrop-blur">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[rgba(239,68,68,0.1)] text-[#ef4444]">
+            <AlertCircle className="size-7" />
+          </div>
+          <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--foreground)]">
+            Gagal mengambil data
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+            Data gagal dimuat dari server. {bootError}
+          </p>
+          <div className="mt-6 flex flex-col gap-2.5">
+            <button
+              onClick={() => window.location.reload()}
+              className="inline-flex min-h-10 w-full items-center justify-center rounded-[16px] bg-[var(--accent-strong)] px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[rgba(26,130,121,0.9)]"
+            >
+              Muat Ulang
+            </button>
+            <form action="/auth/sign-out" method="post">
+              <button
+                type="submit"
+                className="inline-flex min-h-10 w-full items-center justify-center rounded-[16px] border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:border-[var(--border-strong)] hover:bg-gray-50"
+              >
+                Ganti Akun / Keluar
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
