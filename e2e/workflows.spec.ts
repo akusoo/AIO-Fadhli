@@ -187,7 +187,7 @@ test.describe("core workflows", () => {
     await page.getByLabel("Tanggal mulai").fill("2026-04-01");
     await page.getByRole("textbox", { name: /^Modal awal$/ }).fill("1000000");
     await page.getByRole("textbox", { name: /^Nilai saat ini$/ }).first().fill("1020000");
-    await page.getByLabel("Akun sumber").selectOption({ index: 0 });
+    await page.getByLabel("Akun pembayaran modal").selectOption({ index: 0 });
     await page.getByLabel("Tags (opsional)").fill("e2e,investasi");
     await page.getByLabel("Catatan").first().fill("Create investment from e2e flow");
     await page.getByRole("checkbox", { name: /Catat modal awal ke transaksi finance/i }).check();
